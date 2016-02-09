@@ -2,8 +2,8 @@
  #include "config.hpp"
 #endif
 
-#include "base/global_variables.hpp"
 #include "base/thread_macros.hpp"
+#include "base/vectors.hpp"
 #include "communicate/communicate.hpp"
 #include "geometry/geometry_mix.hpp"
 #include "linalgs/linalgs.hpp"
@@ -12,6 +12,7 @@
 #include "operations/su3_paths/arbitrary.hpp"
 #include "operations/smearing/APE.hpp"
 #include "operations/smearing/HYP.hpp"
+#include "watusso.hpp"
 #ifdef USE_THREADS
  #include "routines/thread.hpp"
 #endif
@@ -32,6 +33,9 @@ namespace nissa
   //compute the flux tube
   THREADABLE_FUNCTION_4ARG(measure_watusso, watusso_meas_pars_t*,pars, quad_su3**,eo_conf, int,iconf, int,create_output_file)
   {
+    crash("to be fixed");
+
+    /*
     GET_THREAD_ID();
     
     //open output file
@@ -45,7 +49,7 @@ namespace nissa
     su3 *periscoped=nissa_malloc("periscoped",loc_vol+bord_vol,su3);
     complex *loc_res=nissa_malloc("loc_res",loc_vol,complex);
     quad_su3 *lx_conf=nissa_malloc("lx_conf",loc_vol+bord_vol+edge_vol,quad_su3);
-    paste_eo_parts_into_lx_conf(lx_conf,eo_conf);
+    paste_eo_parts_into_lx_vector(lx_conf,eo_conf);
     
     //make local copy of pars
     gauge_obs_temp_spat_smear_pars_t *smear_pars=&pars->smear_pars;
@@ -68,7 +72,7 @@ namespace nissa
 	
 	//compute the watusso
 	int nu=0;
-	for(int imu=0;imu<3;imu++)
+	for(int imu=0;imu<NDIM-1;imu++)
 	  {
 	    int mu=perp_dir[nu][imu];
 	    
@@ -87,7 +91,7 @@ namespace nissa
 	    complex small_trace;
 	    complex_vector_glb_collapse(small_trace,loc_res,loc_vol);
 	    
-	    master_fprintf(fout," ### APE = ( %lg , %d ) , nu = %d , mu = %d , 1/3<trU> = %+016.016lg %+016.016lg\n\n",smear_pars->ape_spat_alpha,this_niters,nu,mu,small_trace[RE]/glb_vol/3,small_trace[IM]/glb_vol/3);
+	    master_fprintf(fout," ### APE = ( %lg , %d ) , nu = %d , mu = %d , 1/3<trU> = %+016.016lg %+016.016lg\n\n",smear_pars->ape_spat_alpha,this_niters,nu,mu,small_trace[RE]/glb_vol/NCOL,small_trace[IM]/glb_vol/NCOL);
 	    
 	    //elong on both sides the small
 	    int prev_sizeh=0;
@@ -164,8 +168,8 @@ namespace nissa
 		      
 		      //print the output
 		      for(int d=0;d<2*dmax+1;d++) master_fprintf(fout,"%+d %+016.16lg %+016.16lg %+016.016lg %+016.016lg\n",d-dmax,
-								 conn[d][RE]/(3*glb_vol),conn[d][IM]/(3*glb_vol),
-								 disc[d][RE]/(3*glb_vol),disc[d][IM]/(3*glb_vol));
+								 conn[d][RE]/(NCOL*glb_vol),conn[d][IM]/(NCOL*glb_vol),
+								 disc[d][RE]/(NCOL*glb_vol),disc[d][IM]/(NCOL*glb_vol));
 		      master_fprintf(fout,"\n");
 		      
 		      //increase the perpendicular dimension
@@ -183,6 +187,7 @@ namespace nissa
     nissa_free(periscoped);
     nissa_free(big_su3);
     nissa_free(small_su3);
+    */
   }
   THREADABLE_FUNCTION_END
 }

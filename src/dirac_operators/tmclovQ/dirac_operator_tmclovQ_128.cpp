@@ -2,13 +2,11 @@
  #include "config.hpp"
 #endif
 
-#include "base/global_variables.hpp"
-#include "base/vectors.hpp"
 #include "base/thread_macros.hpp"
-#include "communicate/communicate.hpp"
+#include "base/vectors.hpp"
+#include "communicate/borders.hpp"
 #include "linalgs/linalgs.hpp"
 #include "new_types/float_128.hpp"
-#include "new_types/new_types_definitions.hpp"
 #include "operations/su3_paths/topological_charge.hpp"
 #ifdef USE_THREADS
  #include "routines/thread.hpp"
@@ -29,11 +27,11 @@ namespace nissa
 
   void apply_tmclovQ_128_common(spincolor_128 *out,quad_su3 *conf,double kappa,double mu,spincolor_128 *in)
   {
-    communicate_lx_spincolor_128_borders(in);    
+    communicate_lx_spincolor_128_borders(in);
     communicate_lx_quad_su3_borders(conf);
     
     double kcf=1/(2*kappa);
-        
+    
     GET_THREAD_ID();
     NISSA_PARALLEL_LOOP(X,0,loc_vol)
       {

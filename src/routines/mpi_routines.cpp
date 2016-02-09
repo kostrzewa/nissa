@@ -8,13 +8,14 @@
 
 #include "ios.hpp"
 
-#include "base/global_variables.hpp"
 #include "base/thread_macros.hpp"
 #include "geometry/geometry_lx.hpp"
 #include "new_types/complex.hpp"
 #include "new_types/float_128.hpp"
-#include "new_types/new_types_definitions.hpp"
 #include "new_types/rat_approx.hpp"
+
+#define EXTERN_MPI
+#include "mpi_routines.hpp"
 
 #ifdef USE_THREADS
   #include "routines/thread.hpp"
@@ -228,16 +229,16 @@ namespace nissa
     GET_THREAD_ID();
     
     //first destroy on non-sending
-    if(rank_from!=rank && rat->degree!=0) rat_approx_destroy(rat);
     THREAD_BARRIER(); //need to barrier to avoid race condition when later "rat-degree" is update through mpi_bcast
-
+    
     //get degree
-    if(IS_MASTER_THREAD) MPI_Bcast(&(rat->degree),1,MPI_INT,rank_from,MPI_COMM_WORLD);
+    int degree=rat->degree();
+    if(IS_MASTER_THREAD) MPI_Bcast(&degree,1,MPI_INT,rank_from,MPI_COMM_WORLD);
     THREAD_BARRIER(); //need to barrier because "create" is collective call
-
+    
     //allocate if not generated here
-    if(rank_from!=rank)	rat_approx_create(rat,rat->degree,NULL);
-	
+    if(rank_from!=rank)	rat->resize(degree);
+    
     //and now broadcast the remaining part
     if(IS_MASTER_THREAD)
       {
@@ -248,14 +249,14 @@ namespace nissa
     	MPI_Bcast(&rat->num,1,MPI_INT,rank_from,MPI_COMM_WORLD);
     	MPI_Bcast(&rat->den,1,MPI_INT,rank_from,MPI_COMM_WORLD);
     	MPI_Bcast(&rat->cons,1,MPI_DOUBLE,rank_from,MPI_COMM_WORLD);
-	MPI_Bcast(rat->poles,rat->degree,MPI_DOUBLE,rank_from,MPI_COMM_WORLD);
-	MPI_Bcast(rat->weights,rat->degree,MPI_DOUBLE,rank_from,MPI_COMM_WORLD);
+	MPI_Bcast(rat->poles.data(),rat->degree(),MPI_DOUBLE,rank_from,MPI_COMM_WORLD);
+	MPI_Bcast(rat->weights.data(),rat->degree(),MPI_DOUBLE,rank_from,MPI_COMM_WORLD);
       }
     THREAD_BARRIER();
   }
-
+  
   //reduce a double
-  double glb_reduce_double(double in_loc)
+  double glb_reduce_double(double in_loc,double (*thread_op)(double,double),MPI_Op mpi_op)
   {
     double out_glb;
     
@@ -271,8 +272,8 @@ namespace nissa
 	//within master thread summ all the pieces and between MPI
 	if(IS_MASTER_THREAD)
 	  {
-	    for(unsigned int ith=1;ith<nthreads;ith++) in_loc+=glb_double_reduction_buf[ith];
-	    MPI_Allreduce(&in_loc,&(glb_double_reduction_buf[0]),1,MPI_DOUBLE,MPI_SUM,MPI_COMM_WORLD);
+	    for(unsigned int ith=1;ith<nthreads;ith++) in_loc=thread_op(in_loc,glb_double_reduction_buf[ith]);
+	    MPI_Allreduce(&in_loc,&(glb_double_reduction_buf[0]),1,MPI_DOUBLE,mpi_op,MPI_COMM_WORLD);
 	    cache_flush();
 	  }
 	
@@ -314,38 +315,6 @@ namespace nissa
     else
 #endif
       MPI_Allreduce(&in_loc,&out_glb,1,MPI_FLOAT,MPI_SUM,MPI_COMM_WORLD);
-    
-    return out_glb;
-  }
-  
-  //max of all double
-  double glb_max_double(double in_loc)
-  {
-    double out_glb;
-    
-#ifdef USE_THREADS
-    if(!thread_pool_locked)
-      {
-	GET_THREAD_ID();
-	
-	//copy loc in the buf and sync all the threads
-	glb_double_reduction_buf[thread_id]=in_loc;
-	THREAD_BARRIER();
-	
-	//within master thread summ all the pieces and between MPI
-	if(IS_MASTER_THREAD)
-	  {
-	    for(unsigned int ith=1;ith<nthreads;ith++) in_loc=std::max(in_loc,glb_double_reduction_buf[ith]);
-	    MPI_Allreduce(&in_loc,&(glb_double_reduction_buf[0]),1,MPI_DOUBLE,MPI_MAX,MPI_COMM_WORLD);
-	    cache_flush();
-	  }
-	
-	//read glb val
-	THREAD_ATOMIC_EXEC(out_glb=glb_double_reduction_buf[0];);
-      }
-    else
-#endif
-      MPI_Allreduce(&in_loc,&out_glb,1,MPI_DOUBLE,MPI_MAX,MPI_COMM_WORLD);
     
     return out_glb;
   }

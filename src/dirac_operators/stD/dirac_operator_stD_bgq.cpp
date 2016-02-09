@@ -2,7 +2,7 @@
  #include "config.hpp"
 #endif
 
-#include "base/global_variables.hpp"
+#include "base/bench.hpp"
 #include "base/thread_macros.hpp"
 #include "base/vectors.hpp"
 #include "bgq/bgq_macros.hpp"

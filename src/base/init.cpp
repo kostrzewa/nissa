@@ -9,21 +9,25 @@
 #include <stdlib.h>
 #include <string.h>
 
+#if HIGH_PREC == GMP_HIGH_PREC
+ #include <gmpxx.h>
+#endif
+
 #if defined BGQ && !defined BGQ_EMU
  #include <malloc.h>
 #endif
 
+#include "bench.hpp"
 #include "debug.hpp"
-#include "global_variables.hpp"
 #include "random.hpp"
 #include "vectors.hpp"
 
+#include "communicate/borders.hpp"
 #include "communicate/communicate.hpp"
 #include "io/input.hpp"
 #include "io/endianness.hpp"
 #include "geometry/geometry_eo.hpp"
 #include "geometry/geometry_lx.hpp"
-#include "geometry/geometry_Wsklx.hpp"
 #ifdef USE_VNODES
  #include "geometry/geometry_vir.hpp"
 #endif
@@ -39,8 +43,44 @@
  #include "bgq/spi.hpp"
 #endif
 
+#include <unistd.h>
+#include <sys/ioctl.h>
+
 namespace nissa
 {
+  extern const char *git_version;
+  
+  //print the banner
+  void print_banner()
+  {
+    const int message_width=42;
+    
+    //get window size
+    struct winsize w;
+    ioctl(STDOUT_FILENO,TIOCGWINSZ,&w);
+    
+    //check terminal output
+    int width=w.ws_col;
+    int is_terminal=isatty(STDOUT_FILENO);
+    if(!is_terminal) width=message_width+10;
+    
+    //set the bordr
+    if(width>=message_width)
+      {
+	int n=(width-message_width)/2;
+	char sp[n+1];
+	for(int i=0;i<n;i++) sp[i]=' ';
+	sp[n]='\0';
+	master_printf("\n"
+		      "%s███╗   ██╗██╗███████╗███████╗ █████╗ \n"
+		      "%s████╗  ██║██║██╔════╝██╔════╝██╔══██╗\n"
+		      "%s██╔██╗ ██║██║███████╗███████╗███████║\n"
+		      "%s██║╚██╗██║██║╚════██║╚════██║██╔══██║\n"
+		      "%s██║ ╚████║██║███████║███████║██║  ██║\n"
+		      "%s╚═╝  ╚═══╝╚═╝╚══════╝╚══════╝╚═╝  ╚═╝\n\n",sp,sp,sp,sp,sp,sp);
+      }
+  };
+  
   //init nissa
   void init_nissa(int narg,char **arg,const char compile_info[5][1024])
   {
@@ -48,9 +88,8 @@ namespace nissa
     init_MPI_thread(narg,arg);
     
     tot_time=-take_time();
-#ifdef BENCH
     tot_comm_time=0;
-#endif
+    
     verb_call=0;
     
     //this must be done before everything otherwise rank non properly working
@@ -58,15 +97,18 @@ namespace nissa
     get_MPI_nranks();
     get_MPI_rank();
     
-    //associate sigsegv with proper handle
+    //associate signals
     signal(SIGSEGV,signal_handler);
     signal(SIGFPE,signal_handler);
     signal(SIGXCPU,signal_handler);
+    signal(SIGABRT,signal_handler);
+    
+    print_banner();
     
     //print version and configuration and compilation time
-    master_printf("Initializing nissa, version: %s\n",compile_info[0]);
-    master_printf("Configured at %s with flags: %s\n",compile_info[1],compile_info[2]);
-    master_printf("Compiled at %s of %s\n",compile_info[3],compile_info[4]);
+    master_printf("\nInitializing NISSA, version: %s\n",git_version);
+    master_printf("Configured at %s with flags: %s\n",compile_info[0],compile_info[1]);
+    master_printf("Compiled at %s of %s\n",compile_info[2],compile_info[3]);
     
     //define all derived MPI types
     define_MPI_types();
@@ -79,7 +121,6 @@ namespace nissa
 #ifdef USE_VNODES
     vir_geom_inited=0;
 #endif
-    Wsklx_order_inited=0;
     eo_geom_inited=0;
     loc_rnd_gen_inited=0;
     glb_rnd_gen_inited=0;
@@ -99,6 +140,13 @@ namespace nissa
     for(int mu=1;mu<NDIM;mu++) scidac_mapping[mu]=NDIM-mu;
     
     for(int mu=0;mu<NDIM;mu++) all_dirs[mu]=1;
+    for(int mu=0;mu<NDIM;mu++)
+      for(int nu=0;nu<NDIM;nu++)
+	{
+	  only_dir[mu][nu]=(mu==nu);
+	  all_other_dirs[mu][nu]=(mu!=nu);
+	  all_other_spat_dirs[mu][nu]=(mu!=nu && nu!=0);
+	}
     //perpendicular dir
 #if NDIM >= 2
     for(int mu=0;mu<NDIM;mu++)
@@ -154,8 +202,9 @@ namespace nissa
     warn_if_not_communicated=NISSA_DEFAULT_WARN_IF_NOT_COMMUNICATED;
     use_async_communications=NISSA_DEFAULT_USE_ASYNC_COMMUNICATIONS;
     for(int mu=0;mu<NDIM;mu++) fix_nranks[mu]=0;
+#ifdef USE_VNODES
     vnode_paral_dir=NISSA_DEFAULT_VNODE_PARAL_DIR;
-    
+#endif
     //put 0 as minimal request
     recv_buf_size=0;
     send_buf_size=0;
@@ -676,7 +725,6 @@ namespace nissa
     
     //set the cartesian and eo geometry
     set_lx_geometry();
-    set_Wsklx_order(); //sink-based
     
     if(use_eo_geom) set_eo_geometry();
     

@@ -12,6 +12,7 @@
  #include "config.hpp"
 #endif
 
+#include "base/bench.hpp"
 #include "base/thread_macros.hpp"
 #include "routines/ios.hpp"
 #ifdef USE_THREADS
@@ -51,14 +52,8 @@ namespace nissa
     CG_ADDITIONAL_VECTORS_ALLOCATION();
     if(guess==NULL) vector_reset(sol);
     else vector_copy(sol,guess);
-    
-#ifdef BENCH
-    if(IS_MASTER_THREAD)
-      {
-	ncg_inv++;
-	cg_inv_over_time-=take_time();
-      }
-#endif
+
+    START_TIMING(cg_inv_over_time,ncg_inv);
     int each=VERBOSITY_LV3?1:10;
     
     double source_norm;
@@ -86,13 +81,10 @@ namespace nissa
 	final_iter=(++iter);
 	
 	//(r_k,r_k)/(p_k*DD*p_k)
-#ifdef BENCH
-	if(IS_MASTER_THREAD) cg_inv_over_time+=take_time();
-#endif
+	STOP_TIMING(cg_inv_over_time);
 	APPLY_OPERATOR(s,CG_OPERATOR_PARAMETERS p);
-#ifdef BENCH
 	if(IS_MASTER_THREAD) cg_inv_over_time-=take_time();
-#endif	  
+	
 	double_vector_glb_scalar_prod(&alpha,(double*)s,(double*)p,BULK_VOL*NDOUBLES_PER_SITE);
 	omega=delta/alpha;
 	
@@ -131,9 +123,7 @@ namespace nissa
     //check if not converged
     if(final_iter==niter) crash("exit without converging");
     
-#ifdef BENCH
     if(IS_MASTER_THREAD) cg_inv_over_time+=take_time();
-#endif
     
     nissa_free(s);
     nissa_free(p);

@@ -1,11 +1,11 @@
 #include <math.h>
 
-#include "base/global_variables.hpp"
+#include "base/bench.hpp"
 #include "base/debug.hpp"
 #include "base/vectors.hpp"
 #include "dirac_operators/tmclovQ2/dirac_operator_tmclovQ2.hpp"
+#include "geometry/geometry_lx.hpp"
 #include "linalgs/linalgs.hpp"
-#include "new_types/new_types_definitions.hpp"
 
 #define BASETYPE spincolor
 

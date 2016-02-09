@@ -4,13 +4,15 @@
 
 #include <math.h>
 
-#include "base/global_variables.hpp"
 #include "base/thread_macros.hpp"
 #include "base/vectors.hpp"
+#include "geometry/geometry_eo.hpp"
+#include "geometry/geometry_lx.hpp"
+#include "hmc/multipseudo/theory_action.hpp"
 #include "new_types/complex.hpp"
-#include "new_types/new_types_definitions.hpp"
 #include "new_types/su3.hpp"
 #include "routines/ios.hpp"
+
 #ifdef USE_THREADS
  #include "routines/thread.hpp"
 #endif
@@ -25,7 +27,7 @@ namespace nissa
     for(int par=0;par<2;par++)
       {
 	NISSA_PARALLEL_LOOP(ivol,0,loc_volh)
-	  for(int mu=0;mu<4;mu++)
+	  for(int mu=0;mu<NDIM;mu++)
 	    {
 	      S[par][ivol][mu][0]=1;
 	      S[par][ivol][mu][1]=0;
@@ -91,7 +93,7 @@ namespace nissa
   
   void (*get_args_of_quantization[3])(coords,int,int,int)=
   {get_args_of_null_quantization,get_args_of_one_over_L2_quantization,get_args_of_half_half_quantization};
-
+  
   //multiply a background field by a constant em field
   //mu nu refers to the entry of F_mu_nu involved
   THREADABLE_FUNCTION_6ARG(add_em_field_to_backfield, quad_u1**,S, quark_content_t*,quark_content, double,em_str, int,quantization, int,mu, int,nu)
@@ -126,15 +128,50 @@ namespace nissa
   {
     double *E=em_field_pars->E,*B=em_field_pars->B;
     int q=em_field_pars->flag;
-    if(fabs(E[0])>1e-10) add_em_field_to_backfield(S,quark_content,E[0],q,0,1);
-    if(fabs(E[1])>1e-10) add_em_field_to_backfield(S,quark_content,E[1],q,0,2);
-    if(fabs(E[2])>1e-10) add_em_field_to_backfield(S,quark_content,E[2],q,0,3);
-    if(fabs(B[0])>1e-10) add_em_field_to_backfield(S,quark_content,B[0],q,2,3);
-    if(fabs(B[1])>1e-10) add_em_field_to_backfield(S,quark_content,B[1],q,3,1);
-    if(fabs(B[2])>1e-10) add_em_field_to_backfield(S,quark_content,B[2],q,1,2);
+    if(q)
+      {
+	if(fabs(E[0])>1e-10) add_em_field_to_backfield(S,quark_content,E[0],q,0,1);
+	if(fabs(E[1])>1e-10) add_em_field_to_backfield(S,quark_content,E[1],q,0,2);
+	if(fabs(E[2])>1e-10) add_em_field_to_backfield(S,quark_content,E[2],q,0,3);
+	if(fabs(B[0])>1e-10) add_em_field_to_backfield(S,quark_content,B[0],q,2,3);
+	if(fabs(B[1])>1e-10) add_em_field_to_backfield(S,quark_content,B[1],q,3,1);
+	if(fabs(B[2])>1e-10) add_em_field_to_backfield(S,quark_content,B[2],q,1,2);
+      }
   }
   THREADABLE_FUNCTION_END
-
+  
+  //add staggered phases (or remove them!)
+  THREADABLE_FUNCTION_1ARG(add_stagphases_to_backfield, quad_u1**,S)
+  {
+    GET_THREAD_ID();
+    for(int par=0;par<2;par++)
+      {
+	NISSA_PARALLEL_LOOP(ivol_eo,0,loc_volh)
+	  {
+	    coords ph;
+	    get_stagphase_of_lx(ph,loclx_of_loceo[par][ivol_eo]);
+	    for(int mu=0;mu<NDIM;mu++) complex_prodassign_double(S[par][ivol_eo][mu],ph[mu]);
+	  }
+	set_borders_invalid(S);
+      }
+  
+  }
+  THREADABLE_FUNCTION_END
+  
+  //add the antiperiodic condition on the on dir mu
+  THREADABLE_FUNCTION_2ARG(add_antiperiodic_condition_to_backfield, quad_u1**,S, int,mu)
+  {
+    GET_THREAD_ID();
+    for(int par=0;par<2;par++)
+      {
+	NISSA_PARALLEL_LOOP(ivol_eo,0,loc_volh)
+	  if(glb_coord_of_loclx[loclx_of_loceo[par][ivol_eo]][mu]==(glb_size[mu]-1))
+	    complex_prodassign_double(S[par][ivol_eo][mu],-1);
+	set_borders_invalid(S);
+      }
+  }
+  THREADABLE_FUNCTION_END
+  
   //multiply the configuration for an additional u(1) field
   THREADABLE_FUNCTION_2ARG(add_backfield_to_conf, quad_su3**,conf, quad_u1**,u1)
   {
@@ -143,13 +180,13 @@ namespace nissa
     for(int par=0;par<2;par++)
       {
 	NISSA_PARALLEL_LOOP(ivol,0,loc_volh)
-	  for(int mu=0;mu<4;mu++)
+	  for(int mu=0;mu<NDIM;mu++)
 	    safe_su3_prod_complex(conf[par][ivol][mu],conf[par][ivol][mu],u1[par][ivol][mu]);
 	set_borders_invalid(conf[par]);
       }
   }
   THREADABLE_FUNCTION_END
-
+  
   //multiply the configuration for an the conjugate of an u(1) field
   THREADABLE_FUNCTION_2ARG(rem_backfield_from_conf, quad_su3**,conf, quad_u1**,u1)
   {
@@ -158,7 +195,7 @@ namespace nissa
     for(int par=0;par<2;par++)
       {
 	NISSA_PARALLEL_LOOP(ivol,0,loc_volh)
-	  for(int mu=0;mu<4;mu++)
+	  for(int mu=0;mu<NDIM;mu++)
 	    safe_su3_prod_complex_conj(conf[par][ivol][mu],conf[par][ivol][mu],u1[par][ivol][mu]);
 	set_borders_invalid(conf[par]);
       }
@@ -166,32 +203,44 @@ namespace nissa
   THREADABLE_FUNCTION_END
   
   //allocate background fields
-  void theory_pars_allocate_backfield(theory_pars_t &tp)
+  void theory_pars_t::allocate_backfield()
   {
-    tp.backfield=nissa_malloc("back**",tp.nflavs,quad_u1**);
-    for(int iflav=0;iflav<tp.nflavs;iflav++)
+    backfield.resize(nflavs());
+    for(int iflav=0;iflav<nflavs();iflav++)
       {
-	tp.backfield[iflav]=nissa_malloc("back*",2,quad_u1*);
-	for(int par=0;par<2;par++) tp.backfield[iflav][par]=nissa_malloc("back_eo",loc_volh,quad_u1);
+	backfield[iflav]=nissa_malloc("back*",2,quad_u1*);
+	for(int par=0;par<2;par++) backfield[iflav][par]=nissa_malloc("back_eo",loc_volh,quad_u1);
       }
   }
   
   //set the background fields
-  void theory_pars_init_backfield(theory_pars_t &tp)
+  void theory_pars_t::init_backfield()
   {
     //initialize background field to id, then add all other things
-    for(int iflav=0;iflav<tp.nflavs;iflav++)
+    for(int iflav=0;iflav<nflavs();iflav++)
       {
-	init_backfield_to_id(tp.backfield[iflav]);
-	add_im_pot_to_backfield(tp.backfield[iflav],&(tp.quark_content[iflav]));
-	add_em_field_to_backfield(tp.backfield[iflav],&(tp.quark_content[iflav]),&(tp.em_field_pars));
+	init_backfield_to_id(backfield[iflav]);
+	add_im_pot_to_backfield(backfield[iflav],&(quarks[iflav]));
+	add_em_field_to_backfield(backfield[iflav],&(quarks[iflav]),&(em_field_pars));
+	if(quarks[iflav].is_stag) add_stagphases_to_backfield(backfield[iflav]);
+	add_antiperiodic_condition_to_backfield(backfield[iflav],0);
       }
   }
   
   //merge the two
-  void theory_pars_allocinit_backfield(theory_pars_t &tp)
+  void theory_pars_t::allocinit_backfield()
   {
-    theory_pars_allocate_backfield(tp);
-    theory_pars_init_backfield(tp);
+    allocate_backfield();
+    init_backfield();
+  }
+  
+  //destroy
+  void theory_pars_t::destroy_backfield()
+  {
+    for(int iflav=0;iflav<nflavs();iflav++)
+      {
+	for(int par=0;par<2;par++) nissa_free(backfield[iflav][par]);
+	nissa_free(backfield[iflav]);
+      }
   }
 }

@@ -4,13 +4,12 @@
 
 #include <math.h>
 
-#include "new_types/new_types_definitions.hpp"
-#include "new_types/su3.hpp"
-#include "base/vectors.hpp"
+#include "base/bench.hpp"
 #include "base/debug.hpp"
-#include "base/global_variables.hpp"
-#include "communicate/communicate.hpp"
+#include "base/vectors.hpp"
+#include "communicate/borders.hpp"
 #include "linalgs/linalgs.hpp"
+#include "new_types/su3_op.hpp"
 
 #include "dirac_operator_stD_portable.cpp"
 #include "dirac_operator_stD_32_portable.cpp"
@@ -35,15 +34,15 @@ namespace nissa
   //return the even part of the application of D to a vector
   void evn_apply_stD(color *out,quad_su3 **conf,double m,color **in,double sign=1)
   {
-    apply_stDeo_half(out,conf,in[ODD]);  
-    double_vector_linear_comb((double*)out,(double*)in[EVN],m,(double*)out,sign*2,6*loc_volh);
+    apply_stDeo_half(out,conf,in[ODD]);
+    double_vector_linear_comb((double*)out,(double*)in[EVN],m,(double*)out,sign*2,2*NCOL*loc_volh);
   }
   
   //return the odd part of the application of D to a vector
   void odd_apply_stD(color *out,quad_su3 **conf,double m,color **in,double sign=1)
   {
     apply_st2Doe(out,conf,in[EVN]);
-    double_vector_linear_comb((double*)out,(double*)in[ODD],m,(double*)out,sign*0.5,6*loc_volh);
+    double_vector_linear_comb((double*)out,(double*)in[ODD],m,(double*)out,sign*0.5,2*NCOL*loc_volh);
   }
   
   //return the result of the application of D to a vector

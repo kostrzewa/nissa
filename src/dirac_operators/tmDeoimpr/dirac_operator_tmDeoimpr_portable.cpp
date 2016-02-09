@@ -1,5 +1,8 @@
 #pragma once
 
+#include "communicate/borders.hpp"
+#include "new_types/su3_op.hpp"
+
 namespace nissa
 {
   //Refers to the doc: "doc/eo_inverter.lyx" for explenations

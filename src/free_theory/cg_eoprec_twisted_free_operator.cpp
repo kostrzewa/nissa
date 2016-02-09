@@ -3,12 +3,16 @@
 #endif
 
 #include "base/debug.hpp"
-#include "base/global_variables.hpp"
 #include "base/thread_macros.hpp"
+#include "base/vectors.hpp"
+#include "geometry/geometry_eo.hpp"
+#include "geometry/geometry_lx.hpp"
 #include "geometry/geometry_mix.hpp"
 #include "routines/ios.hpp"
 #include "routines/mpi_routines.hpp"
-
+#ifdef USE_THREADS
+ #include "routines/thread.hpp"
+#endif
 #include "free_theory_types.hpp"
 #include "twisted_free_Dirac_eoprec_operator.hpp"
 
@@ -145,7 +149,7 @@ namespace nissa
     spin *source_eos[2];
     source_eos[0]=nissa_malloc("source_eos0",loc_volh+bord_volh,spin);
     source_eos[1]=nissa_malloc("source_eos1",loc_volh+bord_volh,spin);
-    split_lx_spin_into_eo_parts(source_eos,source_lx);
+    split_lx_vector_into_eo_parts(source_eos,source_lx);
     
     //prepare the e/o split version of the solution
     spin *solution_eos[2];
@@ -192,7 +196,7 @@ namespace nissa
     
     /////////////////////////// paste the e/o parts of the solution together and free ///////////////////
     
-    paste_eo_parts_into_lx_spin(solution_lx,solution_eos);
+    paste_eo_parts_into_lx_vector(solution_lx,solution_eos);
     
     for(int par=0;par<2;par++)
       {

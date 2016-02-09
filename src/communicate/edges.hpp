@@ -1,7 +1,9 @@
 #ifndef _EDGES_HPP
 #define _EDGES_HPP
 
-#include "new_types/new_types_definitions.hpp"
+#include "communicate.hpp"
+#include "new_types/su3.hpp"
+#include "routines/mpi_routines.hpp"
 
 namespace nissa
 {

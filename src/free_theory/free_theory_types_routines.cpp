@@ -2,8 +2,9 @@
  #include "config.hpp"
 #endif
 
+#include "base/vectors.hpp"
+#include "communicate/borders.hpp"
 #include "free_theory_types.hpp"
-#include "communicate/communicate.hpp"
 
 namespace nissa
 {

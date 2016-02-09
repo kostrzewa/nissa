@@ -1,14 +1,12 @@
-#ifndef _INCLUDE_REMEZ_ALGORITIHM_H
-#define _INCLUDE_REMEZ_ALGORITIHM_H
+#ifndef _INCLUDE_REMEZ_ALGORITIHM_HPP
+#define _INCLUDE_REMEZ_ALGORITIHM_HPP
 
 #ifdef HAVE_CONFIG_H
  #include "config.hpp"
 #endif
 
-#include "new_types/new_types_definitions.hpp"
-#if HIGH_PREC == NATIVE
- #include "new_types/float_256.hpp"
-#endif
+#include "new_types/high_prec.hpp"
+
 #include "base/vectors.hpp"
 
 namespace nissa
@@ -68,7 +66,7 @@ namespace nissa
     double generate_approx(float_high_prec_t *weights,float_high_prec_t *pole,float_high_prec_t &cons,double ext_minimum,double ext_maximum,int ext_degree,int num,int den,double minerr,double tollerance);
   };
   double generate_approx(rat_approx_t &appr,double minimum,double maximum,int num,int den,double minerr,double tollerance);
-  void generate_approx_of_maxerr(rat_approx_t &appr,double minimum,double maximum,double maxerr,int num,int den,const char *name=NULL);
+  void generate_approx_of_maxerr(rat_approx_t &appr,double minimum,double maximum,double maxerr,int num,int den,const char *name="");
 }
 
 #endif

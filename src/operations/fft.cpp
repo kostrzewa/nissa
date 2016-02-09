@@ -9,16 +9,14 @@
 #endif
 
 #include "base/debug.hpp"
-#include "base/global_variables.hpp"
-#include "base/macros.hpp"
 #include "base/thread_macros.hpp"
 #include "base/vectors.hpp"
 #include "geometry/geometry_lx.hpp"
 #include "linalgs/linalgs.hpp"
-#include "new_types/new_types_definitions.hpp"
 #include "operations/remap_vector.hpp"
 #include "routines/ios.hpp"
 #include "routines/math_routines.hpp"
+#include "routines/mpi_routines.hpp"
 
 #ifdef USE_THREADS
  #include "routines/thread.hpp"

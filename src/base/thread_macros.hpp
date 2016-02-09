@@ -1,14 +1,14 @@
-#ifndef _OPENMP_MACROS_H
-#define _OPENMP_MACROS_H
+#ifndef _THREAD_MACROS_HPP
+#define _THREAD_MACROS_HPP
 
 #ifdef HAVE_CONFIG_H
  #include "config.hpp"
 #endif
 
-#include "global_variables.hpp"
 #include "debug.hpp"
 #ifdef USE_THREADS
  #include <omp.h>
+ #include "routines/thread.hpp"
 #endif
 
 #if defined BGQ && !defined BGQ_EMU
@@ -20,8 +20,12 @@
 
 #ifndef USE_THREADS
  #define NACTIVE_THREADS 1
+ #define MANDATORY_PARALLEL
+ #define MANDATORY_NOT_PARALLEL
 #else
  #define NACTIVE_THREADS ((thread_pool_locked)?1:nthreads)
+ #define MANDATORY_PARALLEL if(nthreads>1 && thread_pool_locked) crash("this cannot be called when threads are locked")
+ #define MANDATORY_NOT_PARALLEL if(nthreads>1 && !thread_pool_locked) crash("this cannot be called when threads are not locked")
 #endif
 
 #define IS_PARALLEL (NACTIVE_THREADS!=1)
@@ -496,6 +500,13 @@ inline void cache_flush()
  #pragma omp flush
 #endif
 }
+
+#if defined BGQ && (! defined BGQ_EMU)
+namespace nissa
+{
+  extern unsigned int nthreads;
+}
+#endif
 
 //barrier without any possible checking
 inline void thread_barrier_internal()

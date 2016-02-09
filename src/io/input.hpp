@@ -1,15 +1,27 @@
 #ifndef _INPUT_HPP
 #define _INPUT_HPP
 
+#ifndef EXTERN_INPUT
+ #define EXTERN_INPUT extern
+#endif
+
+#include <stdio.h>
+#include <string>
+
+#include "geometry/geometry_lx.hpp"
+
 namespace nissa
 {
-  int dir_exists(char *path);
-  int file_exists(const char *path);
+  //global input file handle
+  EXTERN_INPUT FILE *input_global;
+  
+  int dir_exists(std::string path);
+  int file_exists(std::string path);
   int read_var_catcherr(char *out,const char *par,int size_of);
   void close_input();
   void expect_str(const char *exp_str);
-  void file_touch(const char *path);
-  void open_input(const char *input_path);
+  void file_touch(std::string path);
+  void open_input(std::string input_path);
   void read_double(double *out);
   void read_int(int *out);
   void read_list_of_chars(const char *tag,int *nentries,char ***list,int nchar_per_entry);

@@ -5,11 +5,11 @@
 #include "cgm_invert_tmQ2.hpp"
 
 #include "base/debug.hpp"
-#include "base/global_variables.hpp"
 #include "base/vectors.hpp"
 #include "dirac_operators/tmQ/reconstruct_tm_doublet.hpp"
-#include "new_types/new_types_definitions.hpp"
+#include "geometry/geometry_lx.hpp"
 #include "new_types/spin.hpp"
+#include "new_types/su3_op.hpp"
 #include "routines/ios.hpp"
 
 namespace nissa

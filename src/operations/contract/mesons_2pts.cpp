@@ -2,9 +2,9 @@
  #include "config.hpp"
 #endif
 
-#include "base/global_variables.hpp"
 #include "base/thread_macros.hpp"
 #include "base/vectors.hpp"
+#include "geometry/geometry_eo.hpp"
 #include "new_types/complex.hpp"
 #include "new_types/dirac.hpp"
 #include "new_types/su3.hpp"
@@ -59,7 +59,7 @@ namespace nissa
 
 //this function takes care to make the revert on the FIRST spinor, putting the needed gamma5
 #define DEFINE_MESON_TWO_POINTS_WILSON_PROP(TYPE,SHORTTYPE)		\
-  void meson_two_points_Wilson_prop(complex *corr,complex *loc_corr,int *list_op_source,TYPE *s1,int *list_op_sink,TYPE *s2,int ncontr) \
+  void meson_two_points_Wilson_prop(complex *corr,complex *loc_corr,const int *list_op_source,TYPE *s1,const int *list_op_sink,TYPE *s2,int ncontr) \
   {									\
     /*temporary vectors for the internal gamma*/			\
     dirac_matr tsource[ncontr],tsink[ncontr];				\

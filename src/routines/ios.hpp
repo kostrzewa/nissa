@@ -1,17 +1,52 @@
-#ifndef _IOS_H
-#define _IOS_H
+#ifndef _IOS_HPP
+#define _IOS_HPP
 
 #include <string>
-#include "new_types/new_types_definitions.hpp"
+#include <stdio.h>
+#include <stdint.h>
+#include "new_types/complex.hpp"
+
+#ifndef EXTERN_IOS
+ #define EXTERN_IOS extern
+#endif
+
+#define master_printf(...) nissa::master_fprintf(stdout,__VA_ARGS__)
+
+//add verbosity macro
+#if MAX_VERBOSITY_LV>=1
+#define VERBOSITY_LV1 (verbosity_lv>=1)
+#else
+ #define VERBOSITY_LV1 0
+#endif
+#if MAX_VERBOSITY_LV>=2
+ #define VERBOSITY_LV2 (verbosity_lv>=2)
+#else
+ #define VERBOSITY_LV2 0
+#endif
+#if MAX_VERBOSITY_LV>=3
+ #define VERBOSITY_LV3 (verbosity_lv>=3)
+#else
+ #define VERBOSITY_LV3 0
+#endif
+
+#define NISSA_DEFAULT_VERBOSITY_LV 1
+
+//wrappers for verbosity_lv?
+#define verbosity_lv1_master_printf(...) MACRO_GUARD(if(VERBOSITY_LV1) master_printf(__VA_ARGS__);)
+#define verbosity_lv2_master_printf(...) MACRO_GUARD(if(VERBOSITY_LV2) master_printf(__VA_ARGS__);)
+#define verbosity_lv3_master_printf(...) MACRO_GUARD(if(VERBOSITY_LV3) master_printf(__VA_ARGS__);)
 
 namespace nissa
 {
+  EXTERN_IOS int verb_call;
+  EXTERN_IOS int verbosity_lv;
+  
   int count_substrings(const char *str,const char *sub);
-  FILE* open_file(const char *outfile,const char *mode);
-  FILE* open_text_file_for_output(const char *outfile);
-  int cd(const char *path);
-  int cp(char *path_out,char *path_in);
-  int create_dir(char *path);
+  FILE* open_file(std::string path,const char *mode);
+  FILE* open_text_file_for_output(std::string path);
+  int cd(std::string path);
+  int cp(std::string path_out,std::string path_in);
+  int create_dir(std::string path);
   int master_fprintf(FILE *stream,const char *format,...);
   //int rm(const char *path);
   std::string combine(const char *format,...);
@@ -19,10 +54,12 @@ namespace nissa
   void fprintf_friendly_filesize(FILE *fout,uint64_t quant);
   void fprintf_friendly_units(FILE *fout,uint64_t quant,uint64_t orders,const char *units);
   void take_last_characters(char *out,const char *in,int size);
-  int count_file_lines(const char *path);
-  int get_file_size(const char *path);
+  int count_file_lines(std::string path);
+  int get_file_size(std::string path);
   void print_contraction_to_file(FILE *fout,int op1,int op2,complex *contr,int twall,const char *tag,double norm);
-  void print_contractions_to_file(FILE *fout,int ncontr,int *op1,int *op2,complex *contr,int twall,const char *tag,double norm);
+  void print_contractions_to_file(FILE *fout,int ncontr,const int *op1,const int *op2,complex *contr,int twall,const char *tag,double norm);
 }
+
+#undef EXTERN_IOS
 
 #endif

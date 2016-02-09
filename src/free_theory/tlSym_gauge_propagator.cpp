@@ -3,7 +3,6 @@
 #endif
 
 #include "base/debug.hpp"
-#include "base/global_variables.hpp"
 #include "base/random.hpp"
 #include "base/thread_macros.hpp"
 #include "base/vectors.hpp"
@@ -157,7 +156,22 @@ namespace nissa
     set_borders_invalid(out);
   }
   THREADABLE_FUNCTION_END
-
+  
+  THREADABLE_FUNCTION_3ARG(multiply_mom_space_sqrt_tlSym_gauge_propagator, spin1field*,out, spin1field*,in, gauge_info,gl)
+  {
+    GET_THREAD_ID();
+    
+    if(gl.alpha!=FEYNMAN_ALPHA && gl.c1!=0) crash("doesn't make sense out of Wilson regularisation in the Feynaman gauge");
+    NISSA_PARALLEL_LOOP(imom,0,loc_vol)
+      {
+	spin1prop prop;
+	mom_space_tlSym_gauge_propagator_of_imom(prop,gl,imom);
+	spin_prod_double(out[imom],in[imom],sqrt(prop[0][0][RE]));
+      }
+    set_borders_invalid(out);
+  }
+  THREADABLE_FUNCTION_END
+  
   THREADABLE_FUNCTION_3ARG(multiply_x_space_tlSym_gauge_propagator_by_fft, spin1prop*,out, spin1prop*,in, gauge_info,gl)
   {
     GET_THREAD_ID();
@@ -221,6 +235,32 @@ namespace nissa
     //finally takes the dagger of eta, in case 100 only selected
     NISSA_PARALLEL_LOOP(ivol,0,loc_vol) for(int id=0;id<4;id++) complex_conj(eta[ivol][id],eta[ivol][id]);
     set_borders_invalid(eta);
+    
+  }
+  THREADABLE_FUNCTION_END
+  
+  //generate a stochastic gauge propagator
+  THREADABLE_FUNCTION_3ARG(multiply_by_sqrt_tlSym_gauge_propagator, spin1field*,photon, spin1field*,eta, gauge_info,gl)
+  {
+    GET_THREAD_ID();
+    
+    if(photon!=eta) vector_copy(photon,eta);
+    
+    pass_spin1field_from_x_to_mom_space(photon,photon,gl.bc,true);
+    
+    //multiply by prop
+    //put volume normalization due to convolution
+    //cancel zero modes
+    multiply_mom_space_sqrt_tlSym_gauge_propagator(photon,photon,gl);
+    NISSA_PARALLEL_LOOP(imom,0,loc_vol)
+      {
+	spin_prodassign_double(photon[imom],sqrt(glb_vol));
+	cancel_if_zero_mode(photon[imom],gl,imom);
+      }
+    set_borders_invalid(photon);
+    
+    //go back to x space
+    pass_spin1field_from_mom_to_x_space(photon,photon,gl.bc,true);
     
   }
   THREADABLE_FUNCTION_END

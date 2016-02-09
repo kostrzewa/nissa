@@ -1,12 +1,12 @@
 #include <math.h>
 
-#include "communicate/communicate.hpp"
+#include "base/bench.hpp"
 #include "base/debug.hpp"
-#include "base/global_variables.hpp"
 #include "base/vectors.hpp"
+#include "communicate/communicate.hpp"
 #include "dirac_operators/momenta/MFACC.hpp"
+#include "geometry/geometry_lx.hpp"
 #include "linalgs/linalgs.hpp"
-#include "new_types/new_types_definitions.hpp"
 
 #define BASETYPE su3
 #define NDOUBLES_PER_SITE 18
@@ -35,7 +35,7 @@
 
 #include "inverters/templates/cg_invert_template_threaded.cpp"
 
-#include "new_types/su3.hpp"
+#include "new_types/su3_op.hpp"
 
 namespace nissa
 {
@@ -48,7 +48,7 @@ namespace nissa
     su3 *temp_sol=nissa_malloc("temp_sol",loc_vol,su3);
     
     //do the four links
-    for(int mu=0;mu<4;mu++)
+    for(int mu=0;mu<NDIM;mu++)
       {
 	verbosity_lv2_master_printf("Solving Fourier acceleration kernel for internal link %d/4\n",mu);
 	

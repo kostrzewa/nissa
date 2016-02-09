@@ -1,12 +1,11 @@
 #include <math.h>
 
-#include "communicate/communicate.hpp"
+#include "base/bench.hpp"
 #include "base/debug.hpp"
-#include "base/global_variables.hpp"
 #include "base/vectors.hpp"
+#include "communicate/borders.hpp"
 #include "dirac_operators/stD/dirac_operator_stD.hpp"
 #include "linalgs/linalgs.hpp"
-#include "new_types/new_types_definitions.hpp"
 
 #define BASETYPE single_color
 #define NDOUBLES_PER_SITE 6

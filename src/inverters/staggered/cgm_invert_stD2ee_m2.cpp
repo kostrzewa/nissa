@@ -3,12 +3,15 @@
 #endif
 
 #ifdef BGQ
+ #include "base/vectors.hpp"
  #include "cgm_invert_stD2ee_m2_bgq.hpp"
+ #include "geometry/geometry_eo.hpp"
+ #include "geometry/geometry_lx.hpp"
  #include "geometry/geometry_vir.hpp"
 #endif
 #include "cgm_invert_stD2ee_m2_portable.hpp"
 
-#include "base/global_variables.hpp"
+#include "new_types/rat_approx.hpp"
 
 namespace nissa
 {

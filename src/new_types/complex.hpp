@@ -1,10 +1,29 @@
 #ifndef _COMPLEX_HPP
 #define _COMPLEX_HPP
 
-#include "new_types_definitions.hpp"
+#ifdef HAVE_CONFIG_H
+ #include "config.hpp"
+#endif
+
+#include <math.h>
+#include <stdio.h>
+
+//real/imag
+#define RE 0
+#define IM 1
 
 namespace nissa
 {
+  typedef double complex[2];
+  typedef complex quad_u1[NDIM];
+  
+  typedef float single_complex[2];
+  
+  typedef complex bi_complex[2];
+  typedef single_complex bi_single_complex[2];
+  
+  //////////////////////////////////////////////////////////
+  
   inline double real_part_of_complex_prod(complex a,complex b)
   {return a[0]*b[0]-a[1]*b[1];};
   inline double real_part_of_complex_scalar_prod(const complex a,const complex b)
@@ -33,6 +52,11 @@ namespace nissa
   {
     a[0]=b;
     a[1]=0;
+  }
+  inline void complex_put_to_imag(complex a,double b)
+  {
+    a[0]=0;
+    a[1]=b;
   }
   inline void complex_put_to_zero(complex a)
   {complex_put_to_real(a,0);}

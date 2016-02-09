@@ -1,5 +1,7 @@
-#ifndef _DIRAC_OPERATOR_TMDEOIMPR_H
-#define _DIRAC_OPERATOR_TMDEOIMPR_H
+#ifndef _DIRAC_OPERATOR_TMDEOIMPR_HPP
+#define _DIRAC_OPERATOR_TMDEOIMPR_HPP
+
+#include "new_types/su3.hpp"
 
 namespace nissa
 {

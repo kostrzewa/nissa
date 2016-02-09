@@ -1,12 +1,14 @@
+#ifdef HAVE_CONFIG_H
+ #include "config.hpp"
+#endif
+
 #include <math.h>
 
-#include "communicate/communicate.hpp"
 #include "base/debug.hpp"
-#include "base/global_variables.hpp"
 #include "base/vectors.hpp"
+#include "communicate/communicate.hpp"
 #include "dirac_operators/stD/dirac_operator_stD_bgq.hpp"
 #include "linalgs/linalgs.hpp"
-#include "new_types/new_types_definitions.hpp"
 
 #define BASETYPE bi_color
 #define NDOUBLES_PER_SITE 12

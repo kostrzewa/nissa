@@ -6,15 +6,16 @@
 
 #ifdef BGQ
  #include "cg_64_invert_tmDeoimpr_bgq.hpp"
+ #include "geometry/geometry_eo.hpp"
  #include "geometry/geometry_vir.hpp"
 #endif
+#include "base/bench.hpp"
 #include "base/debug.hpp"
-#include "base/global_variables.hpp"
 #include "base/vectors.hpp"
 #include "communicate/communicate.hpp"
 #include "dirac_operators/tmDeoimpr/dirac_operator_tmDeoimpr.hpp"
+#include "geometry/geometry_lx.hpp"
 #include "linalgs/linalgs.hpp"
-#include "new_types/new_types_definitions.hpp"
 #include "routines/ios.hpp"
 
 #define BASETYPE spincolor

@@ -2,12 +2,12 @@
  #include "config.hpp"
 #endif
 
-#include "base/global_variables.hpp"
 #include "base/thread_macros.hpp"
 #include "base/vectors.hpp"
-#include "communicate/communicate.hpp"
-#include "new_types/new_types_definitions.hpp"
-#include "new_types/su3.hpp"
+#include "communicate/borders.hpp"
+#include "communicate/edges.hpp"
+#include "geometry/geometry_lx.hpp"
+#include "new_types/su3_op.hpp"
 #include "routines/ios.hpp"
 #ifdef USE_THREADS
  #include "routines/thread.hpp"
@@ -21,7 +21,7 @@ namespace nissa
 {
   //smear a conf using hyp
   //warning, the input conf needs to have edges allocate!
-  THREADABLE_FUNCTION_6ARG(hyp_smear_conf_dir, quad_su3*,sm_conf, quad_su3*,conf, double,alpha0, double,alpha1, double,alpha2, int,req_mu)
+  THREADABLE_FUNCTION_6ARG(hyp_smear_conf, quad_su3*,sm_conf, quad_su3*,conf, double,alpha0, double,alpha1, double,alpha2, int*,dirs)
   {
 #if NDIM == 4
     GET_THREAD_ID();
@@ -165,7 +165,7 @@ namespace nissa
     
     //loop over external index
     for(int mu=0;mu<4;mu++)
-      if(mu==req_mu)
+      if(dirs[mu])
 	//loop over local volume
 	NISSA_PARALLEL_LOOP(A,0,loc_vol)
 	  {
@@ -221,8 +221,4 @@ namespace nissa
 #endif
   }
   THREADABLE_FUNCTION_END
-  
-  //hyp smear all the dirs
-  void hyp_smear_conf(quad_su3 *sm_conf,quad_su3 *conf,double alpha0,double alpha1,double alpha2)
-  {hyp_smear_conf_dir(sm_conf,conf,alpha0,alpha1,alpha2,-1);}
 }

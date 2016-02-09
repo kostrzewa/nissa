@@ -4,6 +4,9 @@ AC_INIT([nissa],[1.0],[fr.sanfilippo@gmail.com])
 config_flags="$*"
 AC_DEFINE_UNQUOTED([CONFIG_FLAGS],["$config_flags"],[Flags passed to configure])
 
+#silent automake
+AM_SILENT_RULES([yes])
+
 #get configuration time
 AC_MSG_CHECKING([configuration date and time])
 CONFIG_DATE=`date`
@@ -18,19 +21,29 @@ AM_CONFIG_HEADER(src/config.hpp)
 AC_CONFIG_MACRO_DIR([m4])
 AC_CANONICAL_HOST
 
-# Checks for programs
+#checks for programs
+AC_PROG_CC
 AC_PROG_CXX
 AC_PROG_RANLIB
 
-#Checks for headers
+AC_LANG([C++])
+
+#set mpi
+LX_FIND_MPI
+CXXFLAGS="$AM_CXXFLAGS $MPI_CXXFLAGS $CXXFLAGS"
+CFLAGS="$AM_CFLAGS $MPI_CXXFLAGS $CFLAGS"
+LDFLAGS="$AM_LDFLAGS $MPI_CXXLDFLAGS $LDFLAGS"
+LIBS="$LIBS $MPI_CXXLDFLAGS"
+
+#checks for headers
 AC_CHECK_HEADERS([fftw3.h],[fftw_found_headers=yes])
 
-# Checks for libraries
+#checks for libraries
 AC_SEARCH_LIBS(__gmpz_init,gmp)
 AC_SEARCH_LIBS(fftw_plan_dft_r2c_2d,fftw3)
 
-# Check ntl library
-LB_CHECK_NTL
+#check ntl library
+#LB_CHECK_NTL(,,AC_MSG_ERROR(["Unable to find NTL library"]))
 
 #spi
 AC_ARG_ENABLE(spi,
@@ -124,11 +137,11 @@ AC_ARG_ENABLE(bgq,
 	AS_HELP_STRING([--enable-bgq],[Enable bgq stuff (ony for BG/Q)]),
 	enable_bgq="${enableval}",
 	enable_bgq="no")
-if test "$enable_bgq" == "yes"
-then
-	 AC_DEFINE([BGQ],1,[Enable bgq])
-	 AC_DEFINE([USE_VNODES],1,[Enable virtual node parallelization])
-fi
+	if test "$enable_bgq" == "yes"
+	then
+		AC_DEFINE([BGQ],1,[Enable bgq])
+		AC_DEFINE([USE_VNODES],1,[Enable virtual node parallelization])
+	fi
 AM_CONDITIONAL([BGQ],[test "$enable_bgq" == "yes" ],[true],[false])
 AM_CONDITIONAL([USE_VNODES],[test "$enable_bgq" == "yes" ],[true],[false])
 AC_MSG_RESULT([enabling bgq... $enable_bgq])
@@ -137,11 +150,11 @@ AC_MSG_RESULT([enabling bgq... $enable_bgq])
 AC_ARG_ENABLE(bgq-emu,
 	AS_HELP_STRING([--enable-bgq_emu],[Enable bgq_emu stuff (ony for BG/Q)]),
 	enable_bgq_emu="${enableval}",
-	enable_bgq_emu="no")
-if test "$enable_bgq_emu" == "yes"
-then
-	AC_DEFINE([BGQ_EMU],1,[Enable bgq emulation])
-fi
+	if test "$enable_bgq" == "yes";then enable_bgq_emu="no";else enable_bgq_emu="yes";fi)
+	if test "$enable_bgq_emu" == "yes"
+	then
+		AC_DEFINE([BGQ_EMU],1,[Enable bgq emulation])
+	fi
 AM_CONDITIONAL([BGQ_EMU],[test "$enable_bgq_emu" == "yes" ],[true],[false])
 AC_MSG_RESULT([enabling bgq emulation... $enable_bgq_emu])
 
@@ -165,15 +178,6 @@ if test "$enable_thread_debug" = "yes";then AC_DEFINE([THREAD_DEBUG],1,[Enable t
 if test "$enable_thread_debug" = "2";then AC_DEFINE([THREAD_DEBUG],2,[Enable thread_debug]) fi
 AM_CONDITIONAL([THREAD_DEBUG],[test "$enable_thread_debug" == "yes" ],[true],[false])
 AC_MSG_RESULT([enabling thread debug... $enable_thread_debug])
-
-#benchmarks
-AC_ARG_ENABLE(bench,
-	AS_HELP_STRING([--enable-bench],[Enable internal benchmarks]),
-	enable_bench="${enableval}",
-	enable_bench="yes")
-if test "$enable_bench" == "yes";then AC_DEFINE([BENCH],1,[Enable bench]) fi
-AM_CONDITIONAL([BENCH],[test "$enable_bench" == "yes" ],[true],[false])
-AC_MSG_RESULT([enabling internal benchmarks... $enable_bench])
 
 #max verbosity lv
 AC_ARG_ENABLE(max-verbosity-lv,
@@ -203,6 +207,17 @@ if ! printf "%f" "$col" >/dev/null 2>&1; then AC_MSG_ERROR([String $ncol is not 
 AC_MSG_RESULT([enabling number of colors... $ncol])
 AM_CONDITIONAL([NCOL3], [test x$ncol = x3])
 AC_DEFINE_UNQUOTED([NCOL],$ncol,[Number of colors])
+
+#macros to concatenate
+AC_DEFINE([_CONCAT(X,Y)],[X##Y],[Internally concatenation])
+AC_DEFINE([CONCAT(X,Y)],[_CONCAT(X,Y)],[Concatenate two pieces to produce a new token])
+AC_DEFINE([CONCAT2(s1,s2)],[CONCAT(s1,s2)],[Wrapper to beat CPP])
+AC_DEFINE([CONCAT3(s1,s2,s3)],[CONCAT(CONCAT2(s1,s2),s3)],[Concatenate three])
+AC_DEFINE([NAME2(s1,s2)],[CONCAT3(s1,_,s2)],[Link with a _])
+AC_DEFINE([NAME3(s1,s2,s3)],[NAME2(CONCAT3(s1,_,s2),s3)],[Name with two _])
+AC_DEFINE([NAME4(s1,s2,s3,s4)],[NAME3(CONCAT3(s1,_,s2),s3,s4)],[Name with four _])
+AC_DEFINE([REORDER_BARRIER()],[__asm volatile ("")],[Avoid spilling])
+AC_DEFINE([MACRO_GUARD(...)],[do{__VA_ARGS__}while(0)],[Guard semicolon])
 
 #create config.hpp
 AC_CONFIG_FILES(

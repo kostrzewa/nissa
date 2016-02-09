@@ -7,18 +7,19 @@
 #include <math.h>
 #include <algorithm>
 
-#include "base/global_variables.hpp"
 #include "base/thread_macros.hpp"
 #include "base/vectors.hpp"
-#include "communicate/communicate.hpp"
+#include "communicate/borders.hpp"
+#include "communicate/edges.hpp"
 #include "geometry/geometry_mix.hpp"
 #include "new_types/complex.hpp"
 #include "new_types/float_128.hpp"
-#include "new_types/new_types_definitions.hpp"
 #include "new_types/spin.hpp"
 #include "new_types/su3.hpp"
 #include "operations/gaugeconf.hpp"
+#include "operations/su3_paths/gauge_sweeper.hpp"
 #include "operations/smearing/stout.hpp"
+#include "operations/smearing/Wflow.hpp"
 #include "operations/su3_paths/plaquette.hpp"
 #include "routines/ios.hpp"
 #include "routines/mpi_routines.hpp"
@@ -33,14 +34,14 @@ namespace nissa
   //This will calculate 2*a^2*ig*P_{mu,nu} for a single point
   //please ensure to have communicated the edges outside!
   /*
-    ^                   C--<-- B --<--Y 
-    |                   |  2  | |  1  | 
-    n                   |     | |     | 
-    u                   D-->--\X/-->--A 
-    |                   D--<--/X\--<--A 
-    -----mu---->        |  3  | |  4  | 
-    .                   |     | |     | 
-    .                   E-->-- F -->--G 
+    ^                   C--<-- B --<--Y
+    |                   |  2  | |  1  |
+    n                   |     | |     |
+    u                   D-->--\X/-->--A
+    |                   D--<--/X\--<--A
+    -----mu---->        |  3  | |  4  |
+    .                   |     | |     |
+    .                   E-->-- F -->--G
     in order to have the anti-symmetric part, use
     the routine "Pmunu_term"
   */
@@ -65,36 +66,36 @@ namespace nissa
 	    int G=loclx_neighdw[A][nu];
             
 	    su3 temp1,temp2;
-
+	    
 	    //Leaf 1
-	    unsafe_su3_prod_su3(temp1,conf[X][mu],conf[A][nu]);           //    B--<--Y 
-	    unsafe_su3_prod_su3_dag(temp2,temp1,conf[B][mu]);             //    |  1  | 
-	    unsafe_su3_prod_su3_dag(leaves_summ[munu],temp2,conf[X][nu]); //    |     | 
-	    /*                                                 */         //    X-->--A 
+	    unsafe_su3_prod_su3(temp1,conf[X][mu],conf[A][nu]);           //    B--<--Y
+	    unsafe_su3_prod_su3_dag(temp2,temp1,conf[B][mu]);             //    |  1  |
+	    unsafe_su3_prod_su3_dag(leaves_summ[munu],temp2,conf[X][nu]); //    |     |
+	    /*                                                 */         //    X-->--A
             
 	    //Leaf 2
 	    unsafe_su3_prod_su3_dag(temp1,conf[X][nu],conf[C][mu]);       //    C--<--B
-	    unsafe_su3_prod_su3_dag(temp2,temp1,conf[D][nu]);             //    |  2  | 
-	    unsafe_su3_prod_su3(temp1,temp2,conf[D][mu]);                 //    |     | 
+	    unsafe_su3_prod_su3_dag(temp2,temp1,conf[D][nu]);             //    |  2  |
+	    unsafe_su3_prod_su3(temp1,temp2,conf[D][mu]);                 //    |     |
 	    su3_summ(leaves_summ[munu],leaves_summ[munu],temp1);          //    D-->--X
             
 	    //Leaf 3
 	    unsafe_su3_dag_prod_su3_dag(temp1,conf[D][mu],conf[E][nu]);    //   D--<--X
-	    unsafe_su3_prod_su3(temp2,temp1,conf[E][mu]);                  //   |  3  | 
-	    unsafe_su3_prod_su3(temp1,temp2,conf[F][nu]);                  //   |     | 
+	    unsafe_su3_prod_su3(temp2,temp1,conf[E][mu]);                  //   |  3  |
+	    unsafe_su3_prod_su3(temp1,temp2,conf[F][nu]);                  //   |     |
 	    su3_summ(leaves_summ[munu],leaves_summ[munu],temp1);           //   E-->--F
             
 	    //Leaf 4
-	    unsafe_su3_dag_prod_su3(temp1,conf[F][nu],conf[F][mu]);         //  X--<--A 
-	    unsafe_su3_prod_su3(temp2,temp1,conf[G][nu]);                   //  |  4  | 
-	    unsafe_su3_prod_su3_dag(temp1,temp2,conf[X][mu]);               //  |     |  
-	    su3_summ(leaves_summ[munu],leaves_summ[munu],temp1);            //  F-->--G 
+	    unsafe_su3_dag_prod_su3(temp1,conf[F][nu],conf[F][mu]);         //  X--<--A
+	    unsafe_su3_prod_su3(temp2,temp1,conf[G][nu]);                   //  |  4  |
+	    unsafe_su3_prod_su3_dag(temp1,temp2,conf[X][mu]);               //  |     |
+	    su3_summ(leaves_summ[munu],leaves_summ[munu],temp1);            //  F-->--G
             
 	    munu++;
 	  }
       }
   }
-
+  
   THREADABLE_FUNCTION_2ARG(four_leaves, as2t_su3*,Pmunu, quad_su3*,conf)
   {
     GET_THREAD_ID();
@@ -104,7 +105,7 @@ namespace nissa
     set_borders_invalid(Pmunu);
   }
   THREADABLE_FUNCTION_END
-
+  
   //take anti-symmetric part and divide by 4
   void four_leaves_anti_symmetrize_fourth(as2t_su3 out,as2t_su3 in)
   {
@@ -154,7 +155,7 @@ namespace nissa
     +G  +H^+ 0    0
     +H  -G   0    0
     0    0   +I  +J^+
-    0    0   +J  -I 
+    0    0   +J  -I
     
     out[0]=G=iA, out[1]=H=B+iC
     out[2]=I=iD, out[3]=J=E+iF
@@ -164,14 +165,14 @@ namespace nissa
   void build_chromo_therm_from_anti_symmetric_four_leaves(quad_su3 out,as2t_su3 in)
   {
     su3 A,B,C,D,E,F;
-
+    
     su3_subt(A,in[3],in[2]);
     su3_summ(B,in[4],in[1]);
     su3_subt(C,in[5],in[0]);
     su3_summ(D,in[3],in[2]);
     su3_subt(E,in[4],in[1]);
     su3_summ(F,in[5],in[0]);
-
+    
     su3_prod_idouble(out[0],A,1);
     
     su3_copy(out[1],B);
@@ -216,7 +217,7 @@ namespace nissa
 	    for(int c=0;c<3;c++) complex_summ_the_prod(out[d1][c],smunu_entr[d1][imunu],temp_d1[c]);
 	  }
       }
-  }  
+  }
   void unsafe_apply_point_chromo_operator_to_spincolor_128(spincolor_128 out,as2t_su3 Pmunu,spincolor_128 in)
   {
     for(int d1=0;d1<4;d1++)
@@ -392,7 +393,7 @@ namespace nissa
     nissa_free(leaves);
   }
   THREADABLE_FUNCTION_END
-
+  
   //total topological charge
   THREADABLE_FUNCTION_2ARG(total_topological_charge_lx_conf, double*,tot_charge, quad_su3*,conf)
   {
@@ -423,13 +424,13 @@ namespace nissa
     nissa_free(charge);
   }
   THREADABLE_FUNCTION_END
-
+  
   //wrapper for eos case
   THREADABLE_FUNCTION_2ARG(total_topological_charge_eo_conf, double*,tot_charge, quad_su3**,eo_conf)
   {
     //convert to lx
     quad_su3 *lx_conf=nissa_malloc("lx_conf",loc_vol+bord_vol+edge_vol,quad_su3);
-    paste_eo_parts_into_lx_conf(lx_conf,eo_conf);
+    paste_eo_parts_into_lx_vector(lx_conf,eo_conf);
     
     total_topological_charge_lx_conf(tot_charge,lx_conf);
     
@@ -451,45 +452,17 @@ namespace nissa
       }
     else smoothed_conf=unsmoothed_conf;
     
-    //print curent measure and smooth
-    smooth_pars_t sp=pars.smooth_pars;
-    cool_pars_t cop=sp.cool_pars;
-    stout_pars_t stp=sp.stout_pars;
-    switch(sp.method)
+    double t=0,tnext_meas=pars.smooth_pars.meas_each;
+    bool finished;
+    do
       {
-      case smooth_pars_t::COOLING:
-	for(int int_each=int(sp.meas_each),istep=0;istep<=(cop.nsteps/int_each)*int_each;istep++)
-	  {
-	    if(istep%int_each==0)
-	      {
-		double tot_charge;
-		total_topological_charge_lx_conf(&tot_charge,smoothed_conf);
-		master_fprintf(file,"%d %d %16.16lg\n",iconf,istep,tot_charge);
-		verbosity_lv2_master_printf("Topological charge after %d cooling steps: %16.16lg, "
-					    "plaquette: %16.16lg\n",istep,tot_charge,global_plaquette_lx_conf(smoothed_conf));
-	      }
-	    if(istep!=cop.nsteps) cool_lx_conf(smoothed_conf,cop.gauge_action,cop.overrelax_flag,cop.overrelax_exp);
-	  }
-	break;
-      case smooth_pars_t::STOUTING:
-	for(int int_each=int(sp.meas_each),ilev=0;ilev<=(stp.nlev/int_each)*int_each;ilev++)
-	  {
-	    if(ilev%int_each==0)
-	      {
-		double tot_charge;
-		total_topological_charge_lx_conf(&tot_charge,smoothed_conf);
-		master_fprintf(file,"%d %d %16.16lg\n",iconf,ilev,tot_charge);
-		verbosity_lv2_master_printf("Topological charge after %d stouting levels: %16.16lg, "
-					    "plaquette: %16.16lg\n",ilev,tot_charge,global_plaquette_lx_conf(smoothed_conf));
-	      }
-	    if(ilev!=stp.nlev) stout_smear(smoothed_conf,smoothed_conf,&stp);
-	  }
-	break;
-      case smooth_pars_t::WFLOWING:
-	break;
-      default:
-	crash("should have not arrived here");
+	double plaq=global_plaquette_lx_conf(smoothed_conf);
+	double tot_charge;
+	total_topological_charge_lx_conf(&tot_charge,smoothed_conf);
+	master_fprintf(file,"%d %lg %+016.016lg %16.16lg\n",iconf,t,tot_charge,plaq);
+	finished=smooth_lx_conf_until_next_meas(smoothed_conf,pars.smooth_pars,t,tnext_meas);
       }
+    while(!finished);
     
     //discard smoothed conf
     if(preserve_unsmoothed) nissa_free(smoothed_conf);
@@ -499,7 +472,7 @@ namespace nissa
   void measure_topology_eo_conf(top_meas_pars_t &pars,quad_su3 **unsmoothed_conf_eo,int iconf,bool conf_created)
   {
     quad_su3 *unsmoothed_conf_lx=nissa_malloc("unsmoothed_conf_lx",loc_vol+bord_vol+edge_vol,quad_su3);
-    paste_eo_parts_into_lx_conf(unsmoothed_conf_lx,unsmoothed_conf_eo);
+    paste_eo_parts_into_lx_vector(unsmoothed_conf_lx,unsmoothed_conf_eo);
     measure_topology_lx_conf(pars,unsmoothed_conf_lx,iconf,conf_created,false);
     nissa_free(unsmoothed_conf_lx);
   }
@@ -536,10 +509,10 @@ namespace nissa
     vector_reset(staples);
     NISSA_PARALLEL_LOOP(A,0,loc_vol)
       for(int mu=0;mu<4;mu++) //link direction
-	for(int inu=0;inu<3;inu++)                   //  E---F---C   
+	for(int inu=0;inu<3;inu++)                   //  E---F---C
 	  {                                          //  |   |   | mu
-	    int nu=perp_dir[mu][inu];                //  D---A---B   
-	    //this gives the other pair element      //        nu    
+	    int nu=perp_dir[mu][inu];                //  D---A---B
+	    //this gives the other pair element      //        nu
 	    int iplan=plan_perp[mu][inu];
 	    
 	    //takes neighbours
@@ -599,7 +572,7 @@ namespace nissa
       {
 	double charge;
 	quad_su3 *conf[2];
-	if(stout_pars.nlev==0)
+	if(stout_pars.nlevels==0)
 	  {
 	    conf[0]=ext_conf[0];
 	    conf[1]=ext_conf[1];
@@ -616,11 +589,25 @@ namespace nissa
 	update(iconf,charge);
 	
 	//free if needed
-	if(stout_pars.nlev!=0)
+	if(stout_pars.nlevels!=0)
 	  {
 	    nissa_free(conf[0]);
 	    nissa_free(conf[1]);
 	  }
       }
   }
+  
+  //print pars
+  std::string top_meas_pars_t::get_str(bool full)
+    {
+      std::ostringstream os;
+      
+      os<<"MeasTop\n";
+      if(each!=def_each()||full) os<<" Each\t\t=\t"<<each<<"\n";
+      if(after!=def_after()||full) os<<" After\t\t=\t"<<after<<"\n";
+      if(path!=def_path()||full) os<<" Path\t\t=\t\""<<path.c_str()<<"\"\n";
+      os<<smooth_pars.get_str(full);
+      
+      return os.str();
+    }
 }

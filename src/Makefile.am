@@ -3,13 +3,17 @@ include_HEADERS=nissa.hpp
 #add nissa library
 lib_LIBRARIES=$(top_builddir)/lib/libnissa.a
 
+git_version.cpp: $(top_srcdir)/.git/HEAD $(top_srcdir)/.git/index Makefile
+	echo "namespace nissa{const char *git_version=\"$(shell git rev-parse HEAD)\";}" > $@
+__top_builddir__lib_libnissa_a_SOURCES=git_version.cpp
+BUILT_SOURCES=git_version.cpp
+
 ########################################### base sources ##################################
 
-__top_builddir__lib_libnissa_a_SOURCES= \
+__top_builddir__lib_libnissa_a_SOURCES+= \
 	base/bench.cpp \
 	base/close.cpp \
 	base/debug.cpp \
-	base/global_variables.cpp \
 	base/init.cpp \
 	base/random.cpp \
 	base/vectors.cpp
@@ -17,9 +21,7 @@ include_HEADERS+= \
 	base/bench.hpp \
 	base/close.hpp \
 	base/debug.hpp \
-	base/global_variables.hpp \
 	base/init.hpp \
-	base/macros.hpp \
 	base/random.hpp \
 	base/thread_macros.hpp \
 	base/vectors.hpp
@@ -28,11 +30,6 @@ include_HEADERS+= \
 if BGQ
 include_HEADERS+=base/bgq_instructions.hpp
 endif
-
-#include global_variables.cpp in the installation
-#needed because included in global_variables.hpp
-global_variabledir=$(prefix)/include/base
-global_variable_DATA=base/global_variables.cpp
 
 ######################################### bgq specific #####################################
 if BGQ
@@ -75,6 +72,7 @@ endif
 __top_builddir__lib_libnissa_a_SOURCES+= \
 	communicate/all_to_all.cpp \
 	communicate/borders.cpp \
+	communicate/communicate.cpp \
 	communicate/edges.cpp
 
 include_HEADERS+= \
@@ -178,14 +176,12 @@ include_HEADERS+= \
 __top_builddir__lib_libnissa_a_SOURCES+= \
 	geometry/geometry_eo.cpp \
 	geometry/geometry_lx.cpp \
-	geometry/geometry_mix.cpp \
-	geometry/geometry_Wsklx.cpp
+	geometry/geometry_mix.cpp
 
 include_HEADERS+= \
 	geometry/geometry_eo.hpp \
 	geometry/geometry_lx.hpp \
-	geometry/geometry_mix.hpp \
-	geometry/geometry_Wsklx.hpp
+	geometry/geometry_mix.hpp
 
 #compile or not virtual parallelization
 if USE_VNODES
@@ -197,55 +193,61 @@ endif
 
 __top_builddir__lib_libnissa_a_SOURCES+= \
 	hmc/backfield.cpp \
+	hmc/theory_pars.cpp \
 	hmc/gauge/MFACC_fields.cpp \
 	hmc/gauge/MFACC_fields.cpp \
 	hmc/gauge/gluonic_force.cpp \
 	hmc/gauge/pure_gauge_hmc_step.cpp \
-	hmc/gauge/pure_gauge_omelyan_integrator.cpp \
+	hmc/gauge/pure_gauge_Omelyan_integrator.cpp \
+	hmc/gauge/Symanzik_force.cpp \
+	hmc/gauge/Symanzik_action.cpp \
 	hmc/gauge/topological_action.cpp \
 	hmc/gauge/topological_force.cpp \
-	hmc/gauge/tree_level_Symanzik_force.cpp \
-	hmc/gauge/tree_level_Symanzik_action.cpp \
 	hmc/gauge/Wilson_action.cpp \
 	hmc/gauge/Wilson_force.cpp \
 	hmc/momenta/momenta_action.cpp \
 	hmc/momenta/momenta_evolve.cpp \
 	hmc/momenta/momenta_generation.cpp \
-	hmc/rootst_eoimpr/rootst_eoimpr_action.cpp \
-	hmc/rootst_eoimpr/rootst_eoimpr_eigenvalues.cpp \
+	hmc/multipseudo/multipseudo_rhmc_step.cpp \
+	hmc/multipseudo/Omelyan_integrator.cpp \
+	hmc/multipseudo/quark_force.cpp \
+	hmc/multipseudo/set_expansions.cpp \
+	hmc/multipseudo/theory_action.cpp \
 	hmc/rootst_eoimpr/rootst_eoimpr_quark_force.cpp \
-	hmc/rootst_eoimpr/rootst_eoimpr_omelyan_integrator.cpp \
-	hmc/rootst_eoimpr/rootst_eoimpr_pseudofermions_generation.cpp \
-	hmc/rootst_eoimpr/rootst_eoimpr_rhmc_step.cpp
+	hmc/rootst_eoimpr/rootst_eoimpr_pseudofermions_generation.cpp
 
 include_HEADERS+= \
 	hmc/backfield.hpp \
+	hmc/hmc.hpp \
+	hmc/theory_pars.hpp \
 	hmc/gauge/MFACC_fields.hpp \
 	hmc/gauge/MFACC_fields.hpp \
 	hmc/gauge/gluonic_action.hpp \
 	hmc/gauge/gluonic_force.hpp \
 	hmc/gauge/pure_gauge_hmc_step.hpp \
-	hmc/gauge/pure_gauge_omelyan_integrator.hpp \
+	hmc/gauge/pure_gauge_Omelyan_integrator.hpp \
+	hmc/gauge/Symanzik_force.hpp \
+	hmc/gauge/Symanzik_action.hpp \
 	hmc/gauge/topological_action.hpp \
 	hmc/gauge/topological_force.hpp \
-	hmc/gauge/tree_level_Symanzik_force.hpp \
-	hmc/gauge/tree_level_Symanzik_action.hpp \
 	hmc/gauge/Wilson_action.hpp \
 	hmc/gauge/Wilson_force.hpp \
 	hmc/momenta/momenta_action.hpp \
 	hmc/momenta/momenta_evolve.hpp \
 	hmc/momenta/momenta_generation.hpp \
-	hmc/rootst_eoimpr/rootst_eoimpr_action.hpp \
-	hmc/rootst_eoimpr/rootst_eoimpr_eigenvalues.hpp \
+	hmc/multipseudo/multipseudo_rhmc_step.hpp \
+	hmc/multipseudo/Omelyan_integrator.hpp \
+	hmc/multipseudo/quark_force.hpp \
+	hmc/multipseudo/set_expansions.hpp \
+	hmc/multipseudo/theory_action.hpp \
 	hmc/rootst_eoimpr/rootst_eoimpr_quark_force.hpp \
-	hmc/rootst_eoimpr/rootst_eoimpr_omelyan_integrator.hpp \
-	hmc/rootst_eoimpr/rootst_eoimpr_pseudofermions_generation.hpp \
-	hmc/rootst_eoimpr/rootst_eoimpr_rhmc_step.hpp
+	hmc/rootst_eoimpr/rootst_eoimpr_pseudofermions_generation.hpp
 
 ###################################### inverters #################################
 
 __top_builddir__lib_libnissa_a_SOURCES+= \
 	inverters/momenta/cg_invert_MFACC.cpp \
+	inverters/momenta/cgm_invert_MFACC.cpp \
 	inverters/staggered/cgm_invert_stD2ee_m2_portable.cpp \
 	inverters/staggered/cgm_32_invert_stD2ee_m2.cpp \
 	inverters/staggered/cgm_32_invert_stD2ee_m2_portable.cpp \
@@ -273,6 +275,7 @@ __top_builddir__lib_libnissa_a_SOURCES+= \
 
 include_HEADERS+= \
 	inverters/momenta/cg_invert_MFACC.hpp \
+	inverters/momenta/cgm_invert_MFACC.hpp \
 	inverters/twisted_mass/cg_invert_tmDeoimpr.hpp \
 	inverters/twisted_mass/cg_invert_tmQ2.hpp \
 	inverters/twisted_mass/cg_64_invert_tmQ2.hpp \
@@ -374,7 +377,8 @@ __top_builddir__lib_libnissa_a_SOURCES+= \
 	new_types/rat_approx.cpp \
 	new_types/read_new_types.cpp \
 	new_types/spin.cpp \
-	new_types/su3.cpp
+	new_types/su3_op.cpp \
+	new_types/write_new_types.cpp
 
 include_HEADERS+= \
 	new_types/complex.hpp \
@@ -384,11 +388,12 @@ include_HEADERS+= \
 	new_types/float_256.hpp \
 	new_types/high_prec.hpp \
 	new_types/metadynamics.hpp \
-	new_types/new_types_definitions.hpp \
 	new_types/rat_approx.hpp \
 	new_types/read_new_types.hpp \
 	new_types/spin.hpp \
-	new_types/su3.hpp
+	new_types/su3.hpp \
+	new_types/su3_op.hpp \
+	new_types/write_new_types.hpp
 
 ####################################### operations ##################################
 
@@ -409,25 +414,25 @@ __top_builddir__lib_libnissa_a_SOURCES+= \
 	operations/smearing/APE.cpp \
 	operations/smearing/gaussian.cpp \
 	operations/smearing/HYP.cpp \
+	operations/smearing/smooth.cpp \
 	operations/smearing/stout_common.cpp \
 	operations/smearing/stout_eo.cpp \
 	operations/smearing/stout_lx.cpp \
 	operations/smearing/Wflow.cpp \
+	operations/stag/mesons.cpp \
 	operations/stag/magnetization.cpp \
+	operations/stag/nucleon.cpp \
 	operations/stag/putpourri.cpp \
 	operations/stag/rendens.cpp \
 	operations/stag/spinpol.cpp \
 	operations/stag/stag.cpp \
-	operations/stag/time_pseudo_corr.cpp \
 	operations/su3_paths/all_rectangles.cpp \
 	operations/su3_paths/arbitrary.cpp \
 	operations/su3_paths/gauge_sweeper.cpp \
-	operations/su3_paths/hypercubic_transfer.cpp \
 	operations/su3_paths/plaquette.cpp \
 	operations/su3_paths/pline.cpp \
 	operations/su3_paths/rectangles.cpp \
 	operations/su3_paths/rectangular_staples.cpp \
-	operations/su3_paths/shortest_hypercubic_paths.cpp \
 	operations/su3_paths/squared_staples.cpp \
 	operations/su3_paths/topological_charge.cpp \
 	operations/su3_paths/watusso.cpp \
@@ -450,23 +455,23 @@ include_HEADERS+= \
 	operations/smearing/APE.hpp \
 	operations/smearing/gaussian.hpp \
 	operations/smearing/HYP.hpp \
+	operations/smearing/smooth.hpp \
 	operations/smearing/stout.hpp \
 	operations/smearing/Wflow.hpp \
+	operations/stag/mesons.hpp \
 	operations/stag/magnetization.hpp \
+	operations/stag/nucleon.hpp \
 	operations/stag/putpourri.hpp \
 	operations/stag/rendens.hpp \
 	operations/stag/spinpol.hpp \
 	operations/stag/stag.hpp \
-	operations/stag/time_pseudo_corr.hpp \
 	operations/su3_paths/all_rectangles.hpp \
 	operations/su3_paths/arbitrary.hpp \
 	operations/su3_paths/gauge_sweeper.hpp \
-	operations/su3_paths/hypercubic_transfer.hpp \
 	operations/su3_paths/plaquette.hpp \
 	operations/su3_paths/pline.hpp \
 	operations/su3_paths/rectangles.hpp \
 	operations/su3_paths/rectangular_staples.hpp \
-	operations/su3_paths/shortest_hypercubic_paths.hpp \
 	operations/su3_paths/squared_staples.hpp \
 	operations/su3_paths/topological_charge.hpp \
 	operations/su3_paths/watusso.hpp \

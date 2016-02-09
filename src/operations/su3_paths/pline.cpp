@@ -6,14 +6,14 @@
 #include <stdlib.h>
 #include <math.h>
 
-#include "communicate/communicate.hpp"
-#include "base/global_variables.hpp"
 #include "base/vectors.hpp"
+#include "communicate/borders.hpp"
 #include "geometry/geometry_lx.hpp"
 #include "geometry/geometry_mix.hpp"
 #include "io/endianness.hpp"
 #include "linalgs/linalgs.hpp"
 #include "new_types/dirac.hpp"
+#include "new_types/su3_op.hpp"
 #include "operations/fft.hpp"
 #include "operations/shift.hpp"
 #include "operations/remap_vector.hpp"
@@ -286,7 +286,7 @@ namespace nissa
   void average_polyakov_loop_eo_conf(complex tra,quad_su3 **eo_conf,int mu)
   {
     quad_su3 *lx_conf=nissa_malloc("lx_conf",loc_vol+bord_vol,quad_su3);
-    paste_eo_parts_into_lx_conf(lx_conf,eo_conf);
+    paste_eo_parts_into_lx_vector(lx_conf,eo_conf);
     
     average_polyakov_loop_lx_conf(tra,lx_conf,mu);
     

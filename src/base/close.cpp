@@ -6,20 +6,20 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#include "bench.hpp"
 #include "debug.hpp"
-#include "global_variables.hpp"
 #include "random.hpp"
 #include "vectors.hpp"
-#include "new_types/new_types_definitions.hpp"
 #include "geometry/geometry_eo.hpp"
 #include "geometry/geometry_lx.hpp"
-#include "geometry/geometry_Wsklx.hpp"
 #ifdef USE_VNODES
  #include "geometry/geometry_vir.hpp"
 #endif
-#include "hmc/gauge/tree_level_Symanzik_force.hpp"
-#include "hmc/gauge/tree_level_Symanzik_action.hpp"
+#include "hmc/gauge/Symanzik_force.hpp"
+#include "hmc/gauge/Symanzik_action.hpp"
+#include "operations/remap_vector.hpp"
 #include "routines/ios.hpp"
+#include "routines/thread.hpp"
 
 #if FFT_TYPE == FFTW_FFT
  #include <fftw3.h>
@@ -40,7 +40,6 @@ namespace nissa
     
     //unset lx geometry
     if(lx_geom_inited) unset_lx_geometry();
-    if(Wsklx_order_inited) unset_Wsklx_order();
     
     //unset eo geometry
     if(eo_geom_inited) unset_eo_geometry();

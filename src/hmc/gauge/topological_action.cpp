@@ -5,8 +5,9 @@
 #include <algorithm>
 
 #include "base/thread_macros.hpp"
+#include "base/vectors.hpp"
 #include "geometry/geometry_eo.hpp"
-#include "new_types/new_types_definitions.hpp"
+#include "io/input.hpp"
 #include "new_types/su3.hpp"
 #include "operations/smearing/stout.hpp"
 #include "operations/su3_paths/topological_charge.hpp"
@@ -18,18 +19,27 @@
 
 namespace nissa
 {
+  const char topo_file_name[]="topo_potential";
+  
   //compute the topodynamical potential using past history
   double topodynamical_potential(double Q,topotential_pars_t &pars)
   {return pars.compute_pot(Q);}
   //draw the topodynamical potential
-  void draw_topodynamical_potential(topotential_pars_t &pars)
-  {pars.save("topo_potential");}
+  void save_topodynamical_potential(topotential_pars_t &pars)
+  {pars.save(topo_file_name);}
+  void load_topodynamical_potential(topotential_pars_t &pars,bool mandatory)
+  {
+    if(file_exists(topo_file_name)) pars.load(topo_file_name);
+    else
+      if(mandatory) crash("%s file not found when mandatory present",topo_file_name);
+      else verbosity_lv2_master_printf("%s not found, skipping reading",topo_file_name);
+  }
   
   //Compute the topological action
   double topotential_action(quad_su3 **ext_conf,topotential_pars_t &pars)
   {
     quad_su3 *conf[2];
-    if(pars.stout_pars.nlev==0)
+    if(pars.stout_pars.nlevels==0)
       {
         conf[0]=ext_conf[0];
         conf[1]=ext_conf[1];
@@ -40,10 +50,7 @@ namespace nissa
         conf[1]=nissa_malloc("stout_conf",loc_volh+bord_volh+edge_volh,quad_su3);
         
         //smear
-        addrem_stagphases_to_eo_conf(ext_conf);
         stout_smear(conf,ext_conf,&(pars.stout_pars));
-        addrem_stagphases_to_eo_conf(ext_conf);
-        addrem_stagphases_to_eo_conf(conf);
       }
     
     //compute topocharge
@@ -60,8 +67,25 @@ namespace nissa
       }
     
     //free if it was allocated
-    if(pars.stout_pars.nlev!=0) for(int eo=0;eo<2;eo++) nissa_free(conf[eo]);
+    if(pars.stout_pars.nlevels!=0) for(int eo=0;eo<2;eo++) nissa_free(conf[eo]);
     
     return topo_action;
   }
+  
+  std::string topotential_pars_t::get_str(bool full)
+  {
+    std::ostringstream os;
+    const char name_known[3][10]={"None","","Meta"};
+    if(full||flag!=def_flag()) os<<"TopoPotential\t=\t"<<name_known[flag]<<"\n";
+    switch(flag)
+      {
+      case 0:break;
+      case 1:os<<"Theta\t\t"<<theta<<"\n";break;
+      case 2:
+	os<<meta_pars_t::get_str(full);
+	os<<stout_pars.get_str(full);
+	break;
+      }
+    return os.str();
+    }
 }

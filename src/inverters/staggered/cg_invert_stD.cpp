@@ -4,10 +4,10 @@
 
 #include "cg_invert_evn_stD.hpp"
 
-#include "base/global_variables.hpp"
 #include "dirac_operators/stD/dirac_operator_stD.hpp"
+#include "geometry/geometry_lx.hpp"
+#include "geometry/geometry_eo.hpp"
 #include "linalgs/linalgs.hpp"
-#include "new_types/new_types_definitions.hpp"
 
 //this is the famous trick to invert the full D matrix using e/o precond: sol[ODD]=1/m*(source[ODD]-Doe*sol[EVN])
 

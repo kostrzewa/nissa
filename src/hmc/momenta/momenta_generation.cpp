@@ -2,14 +2,21 @@
  #include "config.hpp"
 #endif
 
-#include "base/global_variables.hpp"
+#if HIGH_PREC == GMP_HIGH_PREC
+ #include <gmpxx.h>
+#endif
+
 #include "base/random.hpp"
 #include "base/thread_macros.hpp"
 #include "base/vectors.hpp"
+#include "dirac_operators/momenta/MFACC.hpp"
+#include "geometry/geometry_eo.hpp"
 #include "hmc/gauge/MFACC_fields.hpp"
 #include "inverters/momenta/cg_invert_MFACC.hpp"
+#include "inverters/momenta/cgm_invert_MFACC.hpp"
+#include "linalgs/linalgs.hpp"
 #include "new_types/rat_approx.hpp"
-#include "new_types/su3.hpp"
+#include "new_types/su3_op.hpp"
 #include "operations/remez/remez_algorithm.hpp"
 #include "routines/ios.hpp"
 #ifdef USE_THREADS
@@ -25,42 +32,57 @@ namespace nissa
     for(int par=0;par<2;par++)
       {
 	NISSA_PARALLEL_LOOP(ivol,0,loc_volh)
-	  for(int mu=0;mu<4;mu++)
+	  for(int mu=0;mu<NDIM;mu++)
 	    herm_put_to_gauss(H[par][ivol][mu],&(loc_rnd_gen[loclx_of_loceo[par][ivol]]),1);
 	set_borders_invalid(H[par]);
       }
   }
   THREADABLE_FUNCTION_END
-
-  //generate momenta using guassian hermitean matrix generator
+  //similar for lx
   THREADABLE_FUNCTION_1ARG(generate_hmc_momenta, quad_su3*,H)
   {
     GET_THREAD_ID();
+    
     NISSA_PARALLEL_LOOP(ivol,0,loc_vol)
-      for(int mu=0;mu<4;mu++) herm_put_to_gauss(H[ivol][mu],&(loc_rnd_gen[ivol]),1);
+      for(int mu=0;mu<NDIM;mu++)
+	herm_put_to_gauss(H[ivol][mu],&(loc_rnd_gen[ivol]),1);
     set_borders_invalid(H);
-    
-    //get the rational approx
-    //rat_approx_t rat_exp_H;
-    //generate_approx(rat_exp_H,3.13029e-06,1,15,1,2,"rat_H");
-    //master_printf_rat_approx(&rat_exp_H);
-    
-    crash(""); 
   }
   THREADABLE_FUNCTION_END
-
-  //generate momenta using guassian hermitean matrix generator
-  THREADABLE_FUNCTION_1ARG(generate_hmc_B_momenta, double*,H_B)
+  
+  //generate momenta using guassian hermitian matrix generator
+  THREADABLE_FUNCTION_5ARG(generate_hmc_momenta_with_FACC, quad_su3*,H, quad_su3*,conf, rat_approx_t*,rat_exp_H, double,kappa, double,residue)
   {
     GET_THREAD_ID();
     
-    if(IS_MASTER_THREAD)
+    //temporary for inversion
+    su3 *in=nissa_malloc("in",loc_vol+bord_vol,su3);
+    su3 *out=nissa_malloc("out",loc_vol+bord_vol,su3);
+    su3 *tmp=nissa_malloc("tmp",loc_vol+bord_vol,su3);
+    
+    for(int mu=0;mu<NDIM;mu++)
       {
-	complex temp,ave={0,0};
-	rnd_get_gauss_complex(temp,&glb_rnd_gen,ave,1.0);
-	(*H_B)=temp[0];
+	//fill the vector randomly
+	NISSA_PARALLEL_LOOP(ivol,0,loc_vol) herm_put_to_gauss(in[ivol],&(loc_rnd_gen[ivol]),1);
+	set_borders_invalid(in);
+	
+	//compute the norm
+	double norm;
+	double_vector_glb_scalar_prod(&norm,(double*)in,(double*)in,loc_vol*sizeof(su3)/sizeof(double));
+	
+	//invert
+	summ_src_and_all_inv_MFACC_cgm(out,conf,kappa,rat_exp_H,1000000,residue,in);
+	
+	//try to compute the norm*D
+	apply_MFACC(tmp,conf,kappa,0,out);
+	double norm_reco;
+	double_vector_glb_scalar_prod(&norm_reco,(double*)out,(double*)tmp,loc_vol*sizeof(su3)/sizeof(double));
+	master_printf("Norm: %16.16lg, norm_reco: %16.16lg, relative error: %lg\n",sqrt(norm),sqrt(norm_reco),sqrt(norm/norm_reco)-1);
+	
+	//store the vector
+	NISSA_PARALLEL_LOOP(ivol,0,loc_vol) su3_copy(H[ivol][mu],out[ivol]);
+	set_borders_invalid(H);
       }
-    THREAD_BARRIER();
   }
   THREADABLE_FUNCTION_END
   
@@ -72,13 +94,14 @@ namespace nissa
     //allocate gaussian field
     su3 *V=nissa_malloc("V",loc_vol+bord_vol,su3);
     
-    for(int id=0;id<2;id++)
+    for(int id=0;id<NDIM/2;id++)
       {
         //generate gaussianly V and then invert on it
         generate_MFACC_fields(V);
+	su3_print(V[0]);
         inv_MFACC_cg(pi[id],NULL,conf,kappa,10000000,residue,V);
       }
-    verbosity_lv2_master_printf("\n");
+    verbosity_lv1_master_printf("\n");
     
     nissa_free(V);
   }

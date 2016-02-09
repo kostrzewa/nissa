@@ -6,15 +6,13 @@
 #include <stdlib.h>
 #include <math.h>
 
-#include "communicate/communicate.hpp"
 #include "base/debug.hpp"
-#include "base/global_variables.hpp"
 #include "base/thread_macros.hpp"
 #include "base/vectors.hpp"
+#include "communicate/borders.hpp"
 #include "geometry/geometry_lx.hpp"
 #include "new_types/complex.hpp"
-#include "new_types/new_types_definitions.hpp"
-#include "new_types/su3.hpp"
+#include "new_types/su3_op.hpp"
 #ifdef USE_THREADS
  #include "routines/thread.hpp"
 #endif
@@ -61,7 +59,7 @@ namespace nissa
 	do
 	  {
 	    //find the site and the neighbour
-	    int ineigh=(sign>0) ? loclx_neighdw[isite][mu] : loclx_neighup[isite][mu]; 
+	    int ineigh=(sign>0) ? loclx_neighdw[isite][mu] : loclx_neighup[isite][mu];
 	    
 	    //copy the neighbour in the site
 	    su3_copy(u[isite],u[ineigh]);

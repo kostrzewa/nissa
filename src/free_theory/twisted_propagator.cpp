@@ -6,13 +6,14 @@
 #include "free_theory_types_routines.hpp"
 #include "cg_eoprec_twisted_free_operator.hpp"
 
-#include "base/global_variables.hpp"
 #include "base/thread_macros.hpp"
+#include "base/vectors.hpp"
 #include "geometry/geometry_lx.hpp"
 #include "new_types/complex.hpp"
 #include "new_types/dirac.hpp"
 #include "new_types/spin.hpp"
 #include "operations/fourier_transform.hpp"
+#include "routines/ios.hpp"
 
 #ifdef USE_THREADS
  #include "routines/thread.hpp"
@@ -150,7 +151,7 @@ namespace nissa
     spinspin_put_to_diag(proj,c0[base]);
     int se[2]={-1,+1},sp[2]={+1,-1},s5[2]={-1,+1}; //we put here implicitly the difference of g5 with Nazario
     spinspin_dirac_summ_the_prod_double(proj,base_gamma+map_mu[0],se[tilded]*sinh(e));
-    for(int mu=1;mu<4;mu++) spinspin_dirac_summ_the_prod_idouble(proj,base_gamma+map_mu[mu],sp[tilded]*sin_mom[mu]);
+    for(int mu=1;mu<NDIM;mu++) spinspin_dirac_summ_the_prod_idouble(proj,base_gamma+map_mu[mu],sp[tilded]*sin_mom[mu]);
     spinspin_dirac_summ_the_prod_idouble(proj,base_gamma+5,s5[tilded]*c5[base]);
     
     return abse;

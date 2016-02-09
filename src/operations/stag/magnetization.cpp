@@ -2,14 +2,17 @@
  #include "config.hpp"
 #endif
 
-#include "base/global_variables.hpp"
-#include "communicate/communicate.hpp"
+#include "base/random.hpp"
+#include "base/vectors.hpp"
+#include "communicate/borders.hpp"
 #include "geometry/geometry_eo.hpp"
 #include "hmc/backfield.hpp"
 #include "inverters/staggered/cg_invert_stD.hpp"
 #include "linalgs/linalgs.hpp"
 #include "new_types/su3.hpp"
 #include "routines/mpi_routines.hpp"
+
+#include "magnetization.hpp"
 
 #ifdef USE_THREADS
  #include "routines/thread.hpp"
@@ -18,7 +21,7 @@
 namespace nissa
 {
   //compute the magnetization starting from chi and rnd
-  //please note that the conf must hold backfield and stagphases
+  //please note that the conf must hold backfield
   THREADABLE_FUNCTION_10ARG(magnetization, complex*,magn, complex*,magn_proj_x, quad_su3**,conf, quark_content_t*,quark, color**,rnd, color**,chi, complex*,point_magn, coords*,arg, int,mu, int,nu)
   {
     GET_THREAD_ID();
@@ -54,14 +57,14 @@ namespace nissa
               
               //forward derivative
               unsafe_su3_prod_color(v,conf[par][ieo][rho],chi[!par][iup_eo]);
-              color_scalar_prod(t,v,rnd[par][ieo]);
+              color_scalar_prod(t,rnd[par][ieo],v);
               complex_summ_the_prod_double(point_magn[ivol],t,arg[ivol][rho]);
               //compute also the projected current
               complex_summ_the_prod_double(thr_magn_proj_x[ix],t,arg[ivol][rho]);
               
               //backward derivative: note that we should multiply for -arg*(-U^+)
               unsafe_su3_dag_prod_color(v,conf[!par][idw_eo][rho],chi[!par][idw_eo]);
-              color_scalar_prod(t,v,rnd[par][ieo]);
+              color_scalar_prod(t,rnd[par][ieo],v);
 	      complex_summ_the_prod_double(point_magn[ivol],t,arg[idw_lx][rho]);
               //compute also the projected current
               complex_summ_the_prod_double(thr_magn_proj_x[ix],t,arg[idw_lx][rho]);
@@ -112,19 +115,17 @@ namespace nissa
     //array to store magnetization on single site (actually storing backward contrib at displaced site)
     complex *point_magn=nissa_malloc("app",loc_vol,complex);
     
-    //we add stagphases and backfield externally because we need them for derivative
-    addrem_stagphases_to_eo_conf(conf);
+    //we add backfield externally because we need them for derivative
     add_backfield_to_conf(conf,u1b);
     
     //invert
-    inv_stD_cg(chi,conf,quark->mass,100000,residue,rnd);
+    inv_stD_cg(chi,conf,quark->mass,1000000,residue,rnd);
     
     //compute mag
     magnetization(magn,magn_proj_x,conf,quark,rnd,chi,point_magn,arg,mu,nu);
     
-    //remove stag phases and u1 field
+    //remove backfield
     rem_backfield_from_conf(conf,u1b);
-    addrem_stagphases_to_eo_conf(conf);
     
     //free
     for(int par=0;par<2;par++) nissa_free(chi[par]);
@@ -142,39 +143,40 @@ namespace nissa
     
     //call inner function
     magnetization(magn,magn_proj_x,conf,quantization,u1b,quark,residue,rnd);
-
+    
     for(int par=0;par<2;par++) nissa_free(rnd[par]);
   }
   
   //measure magnetization
-  void measure_magnetization(quad_su3 **conf,theory_pars_t &theory_pars,int iconf,int conf_created)
+  void measure_magnetization(quad_su3 **conf,theory_pars_t &theory_pars,magnetization_meas_pars_t &meas_pars,int iconf,int conf_created)
   {
-    FILE *file=open_file(theory_pars.magnetization_meas_pars.path,conf_created?"w":"a");
-    FILE *file_proj=open_file(combine("%s_proj_x",theory_pars.magnetization_meas_pars.path).c_str(),conf_created?"w":"a");
+    FILE *file=open_file(meas_pars.path,conf_created?"w":"a");
+    FILE *file_proj=open_file(meas_pars.path+"%s_proj_x",conf_created?"w":"a");
     
-    int ncopies=theory_pars.magnetization_meas_pars.ncopies;
+    int ncopies=meas_pars.ncopies;
     for(int icopy=0;icopy<ncopies;icopy++)
       {
         master_fprintf(file,"%d",iconf);
         
         //measure magnetization for each quark
-        for(int iflav=0;iflav<theory_pars.nflavs;iflav++)
+        for(int iflav=0;iflav<theory_pars.nflavs();iflav++)
           {
+	    if(!theory_pars.quarks[iflav].is_stag) crash("not defined for non-staggered quarks");
+	    
             complex magn={0,0};
             complex magn_proj_x[glb_size[1]]; //this makes pair and pact with "1" and "2" upstairs
             for(int i=0;i<glb_size[1];i++) magn_proj_x[i][RE]=magn_proj_x[i][IM]=0;
             
             //loop over hits
-            int nhits=theory_pars.magnetization_meas_pars.nhits;
+            int nhits=meas_pars.nhits;
             for(int hit=0;hit<nhits;hit++)
               {
                 verbosity_lv2_master_printf("Evaluating magnetization for flavor %d/%d, ncopies %d/%d nhits %d/%d\n",
-                                            iflav+1,theory_pars.nflavs,icopy+1,ncopies,hit+1,nhits);
+                                            iflav+1,theory_pars.nflavs(),icopy+1,ncopies,hit+1,nhits);
             
                 //compute and summ
                 complex temp,temp_magn_proj_x[glb_size[1]];
-                magnetization(&temp,temp_magn_proj_x,conf,theory_pars.em_field_pars.flag,theory_pars.backfield[iflav],theory_pars.quark_content+iflav,
-                              theory_pars.magnetization_meas_pars.residue); //flag holds quantization
+                magnetization(&temp,temp_magn_proj_x,conf,theory_pars.em_field_pars.flag,theory_pars.backfield[iflav],&theory_pars.quarks[iflav],meas_pars.residue); //flag holds quantization
                 
                 //normalize
                 complex_summ_the_prod_double(magn,temp,1.0/nhits);
@@ -192,5 +194,16 @@ namespace nissa
     
     close_file(file);
     close_file(file_proj);
+  }
+  
+  //print
+  std::string magnetization_meas_pars_t::get_str(bool full)
+  {
+    std::ostringstream os;
+    
+    os<<"MeasMagnetiz\n";
+    os<<base_fermionic_meas_t::get_str(full);
+    
+    return os.str();
   }
 }

@@ -2,13 +2,11 @@
  #include "config.hpp"
 #endif
 
-#include "base/global_variables.hpp"
 #include "base/thread_macros.hpp"
 #include "base/vectors.hpp"
 #include "communicate/communicate.hpp"
 #include "geometry/geometry_mix.hpp"
 #include "linalgs/linalgs.hpp"
-#include "new_types/new_types_definitions.hpp"
 #include "new_types/su3.hpp"
 #include "operations/shift.hpp"
 #include "operations/remap_vector.hpp"
@@ -20,6 +18,8 @@
 #include "operations/smearing/APE.hpp"
 #include "operations/smearing/HYP.hpp"
 #include "operations/su3_paths/plaquette.hpp"
+
+#include "all_rectangles.hpp"
 
 namespace nissa
 {
@@ -34,7 +34,7 @@ namespace nissa
         icmp/=L[mu];
       }
   }
-
+  
   //return the three coords of site in the transposed space
   int get_site_of_tricoords(tricoords_t c,tricoords_t L)
   {
@@ -73,7 +73,7 @@ namespace nissa
 #if NDIM>=3
     int mu0=((int*)pars)[0],imu1=((int*)pars)[1],prp_vol=((int*)pars)[2];
     int mu1=perp_dir[mu0][imu1],mu2=perp2_dir[mu0][imu1][0],mu3=perp2_dir[mu0][imu1][1];
-
+    
     //find dest in the global indexing
     int *g=glb_coord_of_loclx[iloc_lx];
     int glb_dest_site=g[mu1]+glb_size[mu1]*(g[mu0]+glb_size[mu0]*(g[mu2]+glb_size[mu2]*g[mu3]));
@@ -85,19 +85,15 @@ namespace nissa
   }
 
   //compute all possible rectangular paths among a defined interval
-  THREADABLE_FUNCTION_4ARG(measure_all_rectangular_paths, all_rect_meas_pars_t*,pars, quad_su3*,ori_conf, int,iconf, int,create_output_file)
+  THREADABLE_FUNCTION_4ARG(measure_all_rectangular_paths, all_rects_meas_pars_t*,pars, quad_su3*,ori_conf, int,iconf, int,create_output_file)
   {
 #if NDIM>=3
     GET_THREAD_ID();
-
+    
     verbosity_lv1_master_printf("Computing all rectangular paths\n");
-
-    //take a copy of smear pars
-    gauge_obs_temp_spat_smear_pars_t *smear_pars=&pars->smear_pars;
-    gauge_obs_temp_smear_pars_t *temp_smear_pars=&smear_pars->gauge_temp_smear_pars;
     
     //remapping
-    int nape_spat_levls=smear_pars->nape_spat_levls,ntot_sme=1+nape_spat_levls;
+    int nspat_sme=pars->spat_smear_pars.nmeas(),ntot_sme=1+nspat_sme;
     int prp_vol[12],cmp_vol[12],imu01=0,mu0_l[12],mu1_l[12],cmp_vol_max=0;
     vector_remap_t *remap[12];
     su3 *transp_conf[12];
@@ -133,19 +129,17 @@ namespace nissa
     
     //hyp or APE smear the conf
     quad_su3 *sme_conf=nissa_malloc("sme_conf",loc_vol+bord_vol+edge_vol,quad_su3);
-    for(int mu0=0;mu0<4;mu0++)
+    for(int mu0=0;mu0<NDIM;mu0++)
       {
-	if(temp_smear_pars->use_hyp_or_ape_temp==0)
-	  hyp_smear_conf_dir(sme_conf,ori_conf,temp_smear_pars->hyp_temp_alpha0,
-			     temp_smear_pars->hyp_temp_alpha1,temp_smear_pars->hyp_temp_alpha2,mu0);
-	else ape_single_dir_smear_conf(sme_conf,ori_conf,temp_smear_pars->ape_temp_alpha,temp_smear_pars->nape_temp_iters,mu0);
+	vector_copy(sme_conf,ori_conf);
+	smooth_lx_conf(sme_conf,pars->temp_smear_pars,only_dir[0]);
 	verbosity_lv1_master_printf("Plaquette after \"temp\" (%d) smear: %16.16lg\n",mu0,global_plaquette_lx_conf(sme_conf));
 	
 	//store temporal links and send them
 	NISSA_PARALLEL_LOOP(ivol,0,loc_vol)
 	  su3_copy(pre_transp_conf_holder[ivol],sme_conf[ivol][mu0]);
-	THREAD_BARRIER();	
-	for(int imu1=0;imu1<3;imu1++)
+	THREAD_BARRIER();
+	for(int imu1=0;imu1<NDIM-1;imu1++)
 	  {
 	    int imu01=mu0*3+imu1;
 	    remap[imu01]->remap(post_transp_conf_holder,pre_transp_conf_holder,sizeof(su3));
@@ -154,14 +148,15 @@ namespace nissa
 	    THREAD_BARRIER();
 	  }
 	
-	//spatial APE smearing
-	for(int iape=0;iape<nape_spat_levls;iape++)
+	//spatial smearing
+	double t=0,tnext_meas=0;
+	bool finished;
+	int imeas=0;
+	do
 	  {
-	    ape_perp_dir_smear_conf(sme_conf,sme_conf,smear_pars->ape_spat_alpha,
-				    (iape==0)?smear_pars->nape_spat_iters[0]:
-				    (smear_pars->nape_spat_iters[iape]-smear_pars->nape_spat_iters[iape-1]),mu0);
-	    verbosity_lv1_master_printf("Plaquette after %d perp %d ape smears: %16.16lg\n",
-					iape+1,mu0,global_plaquette_lx_conf(sme_conf));
+	    finished=smooth_lx_conf_until_next_meas(sme_conf,pars->spat_smear_pars,t,tnext_meas,all_other_dirs[mu0]);
+	    verbosity_lv1_master_printf("Plaquette after %d perp to dir time %lg smooth: %16.16lg\n",
+					imeas,mu0,tnext_meas,global_plaquette_lx_conf(sme_conf));
 	    
 	    //store "spatial" links and send them
 	    for(int imu1=0;imu1<3;imu1++)
@@ -173,10 +168,13 @@ namespace nissa
 		THREAD_BARRIER();
 		remap[imu01]->remap(post_transp_conf_holder,pre_transp_conf_holder,sizeof(su3));
 		NISSA_PARALLEL_LOOP(icmp,0,cmp_vol[imu01])
-		  su3_copy(transp_conf[imu01][icmp+cmp_vol[imu01]*(1+iape)],post_transp_conf_holder[icmp]);
+		  su3_copy(transp_conf[imu01][icmp+cmp_vol[imu01]*(1+imeas)],post_transp_conf_holder[icmp]);
 		THREAD_BARRIER();
 	      }
+	    imeas++;
+	    if(imeas>nspat_sme) crash("imeas %d while max expected %d",imeas,nspat_sme);
 	  }
+	while(!finished);
       }
     
     //free smeared conf, pre-post buffers and remappers
@@ -190,7 +188,7 @@ namespace nissa
     //all the rectangles
     int dD=pars->Dmax+1-pars->Dmin;
     int dT=pars->Tmax+1-pars->Tmin;
-    int nrect=dD*dT*12*nape_spat_levls;
+    int nrect=dD*dT*12*nspat_sme;
     double *all_rectangles=nissa_malloc("all_rectangles",nrect*NACTIVE_THREADS,double);
     vector_reset(all_rectangles);
     double *all_rectangles_loc_thread=all_rectangles+nrect*THREAD_ID;
@@ -211,11 +209,11 @@ namespace nissa
 	    //take initial link
 	    su3 U;
 	    su3_copy(U,transp_conf[imu01][icmp+cmp_vol[imu01]*0]);
-
+	    
 	    //arrive to initial t
 	    for(int t=1;t<pars->Tmin;t++)
 	      safe_su3_prod_su3(U,U,transp_conf[imu01][site_shift(icmp,L,1,t)+cmp_vol[imu01]*0]);
-
+	    
 	    //multiply all the rest
 	    for(int dt=0;dt<dT;dt++)
 	      {
@@ -224,18 +222,18 @@ namespace nissa
 	      }
 	  }
 	
-	for(int iape=0;iape<nape_spat_levls;iape++)
+	for(int ispat_sme=0;ispat_sme<nspat_sme;ispat_sme++)
 	  {
 	    //create Dlines up to Dmin
 	    NISSA_PARALLEL_LOOP(icmp,0,cmp_vol[imu01])
 	      {
 		//copy initial link
-		su3_copy(Dline[icmp],transp_conf[imu01][icmp+cmp_vol[imu01]*(1+iape)]);
-
+		su3_copy(Dline[icmp],transp_conf[imu01][icmp+cmp_vol[imu01]*(1+ispat_sme)]);
+		
 		//procede until minimum
 		for(int d=1;d<pars->Dmin;d++)
 		  safe_su3_prod_su3(Dline[icmp],Dline[icmp],
-				    transp_conf[imu01][site_shift(icmp,L,2,d)+cmp_vol[imu01]*(1+iape)]);
+				    transp_conf[imu01][site_shift(icmp,L,2,d)+cmp_vol[imu01]*(1+ispat_sme)]);
 	      }
 	    THREAD_BARRIER();
 	    
@@ -266,7 +264,7 @@ namespace nissa
 		//prolong
 		NISSA_PARALLEL_LOOP(icmp,0,cmp_vol[imu01])
 		  safe_su3_prod_su3(Dline[icmp],Dline[icmp],
-				    transp_conf[imu01][site_shift(icmp,L,2,d)+cmp_vol[imu01]*(1+iape)]);
+				    transp_conf[imu01][site_shift(icmp,L,2,d)+cmp_vol[imu01]*(1+ispat_sme)]);
 		THREAD_BARRIER();
 	      }
 	  }
@@ -299,13 +297,13 @@ namespace nissa
 	    irect=0;
 	    char dir_name[5]="txyz";
 	    for(int imu01=0;imu01<12;imu01++)
-	      for(int iape=0;iape<nape_spat_levls;iape++)
+	      for(int isme=0;isme<nspat_sme;isme++)
 		for(int dd=0;dd<dD;dd++)
 		  for(int dt=0;dt<dT;dt++)
 		    {
-		      fprintf(fout,"cnf=%d %c_ape_%d=%d %c_hyp=%d %16.16lg\n",
+		      fprintf(fout,"cnf=%d %c_spatsme_%lg=%d %c_hyp=%d %16.16lg\n",
 			      iconf,
-			      dir_name[mu1_l[imu01]],smear_pars->nape_spat_iters[iape],dd+pars->Dmin,
+			      dir_name[mu1_l[imu01]],isme*pars->spat_smear_pars.meas_each,dd+pars->Dmin,
 			      dir_name[mu0_l[imu01]],dt+pars->Tmin,
 			      all_rectangles_glb[irect++]/(3*glb_vol));
 		    }
@@ -324,8 +322,10 @@ namespace nissa
   THREADABLE_FUNCTION_END
   
   //compute all possible rectangular paths among a defined interval
-  THREADABLE_FUNCTION_4ARG(measure_all_rectangular_paths_old, all_rect_meas_pars_t*,pars, quad_su3*,ori_conf, int,iconf, int,create_output_file)
+  THREADABLE_FUNCTION_4ARG(measure_all_rectangular_paths_old, all_rects_meas_pars_t*,pars, quad_su3*,ori_conf, int,iconf, int,create_output_file)
   {
+    crash("to be fixed");
+    /*
     GET_THREAD_ID();
     
     gauge_obs_temp_spat_smear_pars_t *smear_pars=&pars->smear_pars;
@@ -461,16 +461,52 @@ namespace nissa
     nissa_free(TS_path);
     nissa_free(closed_path);
     nissa_free(point_path);
+    */
   }
   THREADABLE_FUNCTION_END
   
-  void measure_all_rectangular_paths(all_rect_meas_pars_t *pars,quad_su3 **conf_eo,int iconf,int create_output_file)
+  void measure_all_rectangular_paths(all_rects_meas_pars_t *pars,quad_su3 **conf_eo,int iconf,int create_output_file)
   {
     quad_su3 *conf_lx=nissa_malloc("conf_lx",loc_vol+bord_vol+edge_vol,quad_su3);
-    paste_eo_parts_into_lx_conf(conf_lx,conf_eo);
+    paste_eo_parts_into_lx_vector(conf_lx,conf_eo);
+    
+    //check that we do not exceed geometry
+    for(int i=1;i<NDIM;i++) if(pars->Dmin>=glb_size[i]) crash("minimal spatial %d size exceeds global size[%d]=%d",pars->Dmin,i,glb_size[i]);
+    for(int i=1;i<NDIM;i++)
+      if(pars->Dmax>=glb_size[i])
+	{
+	  master_printf("maximal spatial %d size exceeds global size[%d]=%d, reducing it\n",pars->Dmax,i,glb_size[i]);
+	  pars->Dmax=glb_size[i];
+	}
+    if(pars->Tmin>=glb_size[0]) crash("minimal temporal %d size exceeds global size[0]=%d",pars->Tmin,glb_size[0]);
+    if(pars->Tmax>=glb_size[0])
+      {
+	master_printf("maximal temporal %d size exceeds global size[0]=%d, reducing it\n",pars->Tmax,glb_size[0]);
+	pars->Tmax=glb_size[0];
+      }
     
     measure_all_rectangular_paths(pars,conf_lx,iconf,create_output_file);
     
     nissa_free(conf_lx);
   }
+  
+  //print pars
+  std::string all_rects_meas_pars_t::get_str(bool full)
+    {
+      std::ostringstream os;
+      
+      os<<"MeasAllRects\n";
+      if(each!=def_each()||full) os<<" Each\t\t=\t"<<each<<"\n";
+      if(after!=def_after()||full) os<<" After\t\t=\t"<<after<<"\n";
+      if(path!=def_path()||full) os<<" Path\t\t=\t\""<<path.c_str()<<"\"\n";
+      if(Dmin!=def_Dmin()||full) os<<" Dmin\t\t=\t"<<Dmin<<"\n";
+      if(Dmax!=def_Dmax()||full) os<<" Dmax\t\t=\t"<<Dmax<<"\n";
+      if(Tmin!=def_Tmin()||full) os<<" Tmin\t\t=\t"<<Tmin<<"\n";
+      if(Tmax!=def_Tmax()||full) os<<" Tmax\t\t=\t"<<Tmax<<"\n";
+      if(spat_smear_pars.is_nonstandard()||full) os<<" Spatial "<<spat_smear_pars.get_str(full);
+      if(temp_smear_pars.is_nonstandard()||full) os<<" Temporal "<<temp_smear_pars.get_str(full);
+      
+      return os.str();
+    }
+
 }

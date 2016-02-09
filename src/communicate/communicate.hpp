@@ -1,11 +1,12 @@
 #ifndef COMMUNICATE_HPP
 #define COMMUNICATE_HPP
 
-#include "borders.hpp"
-#include "edges.hpp"
+#include <mpi.h>
+#include <stdio.h>
+#include <stdint.h>
 
-#include "base/global_variables.hpp"
-#include "base/macros.hpp"
+#define NISSA_DEFAULT_WARN_IF_NOT_COMMUNICATED 0
+#define NISSA_DEFAULT_USE_ASYNC_COMMUNICATIONS 1
 
 /*
   Order in memory of borders for a 3^4 lattice.
@@ -16,92 +17,119 @@
   
   Each group contains the borders of all the 4 directions, each only if really parallelized, in the order (txyz).
   For a 3x3 system the borders are numbered as following:
-   
-      6 7 8          
+  
+      6 7 8
      -------         ^
   5 | X X X | B      |
   4 | X X X | A      0
   3 | X X X | 9      |
      -------         X---1--->
-      0 1 2          
+      0 1 2
   
   This is the shape and ordering of the border in the memory, for a 3^4 lattice
- _____________________________________________________________________________________________________________________ 
+ _____________________________________________________________________________________________________________________
 |___________________________________________________dir____=_____0____________________________________________________|
 |_______________x__=__0_______________|||_______________x__=__1_______________|||_______________x__=__2_______________|
 |____y=0____||____y=1____||____y=2____|||____y=0____||____y=1____||____y=2____|||____y=0____||____y=1____||____y=2____|
 | z | z | z || z | z | z || z | z | z ||| z | z | z || z | z | z || z | z | z ||| z | z | z || z | z | z || z | z | z |
 |012|012|012||012|012|012||012|012|012|||012|012|012||012|012|012||012|012|012|||012|012|012||012|012|012||012|012|012|
- --------------------------------------------------------------------------------------------------------------------- 
-
- _____________________________________________________________________________________________________________________ 
+ ---------------------------------------------------------------------------------------------------------------------
+ 
+ _____________________________________________________________________________________________________________________
 |___________________________________________________dir____=_____1____________________________________________________|
 |_______________t__=__0_______________|||_______________t__=__1_______________|||_______________t__=__2_______________|
 |____y=0____||____y=1____||____y=2____|||____y=0____||____y=1____||____y=2____|||____y=0____||____y=1____||____y=2____|
 | z | z | z || z | z | z || z | z | z ||| z | z | z || z | z | z || z | z | z ||| z | z | z || z | z | z || z | z | z |
 |012|012|012||012|012|012||012|012|012|||012|012|012||012|012|012||012|012|012|||012|012|012||012|012|012||012|012|012|
- --------------------------------------------------------------------------------------------------------------------- 
-
- _____________________________________________________________________________________________________________________ 
+ ---------------------------------------------------------------------------------------------------------------------
+ 
+ _____________________________________________________________________________________________________________________
 |___________________________________________________dir____=_____2____________________________________________________|
 |_______________t__=__0_______________|||_______________t__=__1_______________|||_______________t__=__2_______________|
 |____x=0____||____x=1____||____x=2____|||____x=0____||____x=1____||____x=2____|||____x=0____||____x=1____||____x=2____|
 | z | z | z || z | z | z || z | z | z ||| z | z | z || z | z | z || z | z | z ||| z | z | z || z | z | z || z | z | z |
 |012|012|012||012|012|012||012|012|012|||012|012|012||012|012|012||012|012|012|||012|012|012||012|012|012||012|012|012|
- --------------------------------------------------------------------------------------------------------------------- 
-
- _____________________________________________________________________________________________________________________ 
+ ---------------------------------------------------------------------------------------------------------------------
+ 
+ _____________________________________________________________________________________________________________________
 |___________________________________________________dir____=_____3____________________________________________________|
 |_______________t__=__0_______________|||_______________t__=__1_______________|||_______________t__=__2_______________|
 |____x=0____||____x=1____||____x=2____|||____x=0____||____x=1____||____x=2____|||____x=0____||____x=1____||____x=2____|
 | y | y | y || y | y | y || y | y | y ||| y | y | y || y | y | y || y | y | y ||| y | y | y || y | y | y || y | y | y |
 |012|012|012||012|012|012||012|012|012|||012|012|012||012|012|012||012|012|012|||012|012|012||012|012|012||012|012|012|
- --------------------------------------------------------------------------------------------------------------------- 
-
+ ---------------------------------------------------------------------------------------------------------------------
+ 
 */
 
+#ifndef EXTERN_COMMUNICATE
+ #define EXTERN_COMMUNICATE extern
+#endif
+
+#ifdef SPI
+ #include <spi/include/kernel/MU.h>
+#endif
+
 namespace nissa
-{  
-#define DEFINE_EO_BORDERS_ROUTINES(TYPE)				\
-  inline void NAME3(communicate_ev_and_od,TYPE,borders)(TYPE **s)	\
-  {communicate_ev_and_od_borders((void**)s,NAME3(lx,TYPE,comm));}	\
-  inline void NAME3(communicate_ev_or_od,TYPE,borders)(TYPE *s,int eo)	\
-  {communicate_ev_or_od_borders(s,NAME3(eo,TYPE,comm),eo);}		\
-  inline void NAME3(start_communicating_ev_or_od,TYPE,borders)(TYPE *s,int eo) \
-  {start_communicating_ev_or_od_borders(NAME3(eo,TYPE,comm),s,eo);}	\
-  inline void NAME3(finish_communicating_ev_or_od,TYPE,borders)(TYPE *s) \
-  {finish_communicating_ev_or_od_borders(s,NAME3(eo,TYPE,comm));}	\
-  inline void NAME3(communicate_ev,TYPE,borders)(TYPE *s)		\
-  {communicate_ev_or_od_borders(s,NAME3(eo,TYPE,comm),EVN);}		\
-  inline void NAME3(communicate_od,TYPE,borders)(TYPE *s)		\
-  {communicate_ev_or_od_borders(s,NAME3(eo,TYPE,comm),ODD);}
+{
   
-#define DEFINE_LX_BORDERS_ROUTINES(TYPE)			\
-  inline void NAME3(communicate_lx,TYPE,borders)(TYPE *s)	\
-  {communicate_lx_borders(s,NAME3(lx,TYPE,comm));}			\
-  inline void NAME3(start_communicating_lx,TYPE,borders)(TYPE *s)	\
-  {start_communicating_lx_borders(NAME3(lx,TYPE,comm),s);}		\
-  inline void NAME3(finish_communicating_lx,TYPE,borders)(TYPE *s)	\
-  {finish_communicating_lx_borders(s,NAME3(lx,TYPE,comm));}
+#ifdef USE_MPI
+  //out and in buffer
+  struct comm_t
+  {
+    //bgq specific structures, in alternative to ordinary MPI
+#ifdef SPI
+    //descriptors
+    MUHWI_Descriptor_t *descriptors;
+    MUHWI_Destination spi_dest[8];
+#else
+    //destinations and source ranks
+    int send_rank[8],recv_rank[8];
+    //requests and message
+    MPI_Request requests[16];
+    int nrequest,imessage;
+#endif
+    
+    //communication in progress
+    int comm_in_prog;
+    //local size
+    uint64_t nbytes_per_site;
+    //size of the message
+    uint64_t tot_mess_size;
+    //offsets
+    int send_offset[8],message_length[8],recv_offset[8];
+    
+    //constructor
+    bool initialized;
+    comm_t(){initialized=false;}
+  };
+#endif
   
-#define DEFINE_BORDERS_ROUTINES(TYPE)		\
-  DEFINE_LX_BORDERS_ROUTINES(TYPE)		\
-  DEFINE_EO_BORDERS_ROUTINES(TYPE)
+  EXTERN_COMMUNICATE int ncomm_allocated;
+  EXTERN_COMMUNICATE int comm_in_prog;
+  EXTERN_COMMUNICATE int warn_if_not_communicated;
+  EXTERN_COMMUNICATE int use_async_communications;
   
-  DEFINE_BORDERS_ROUTINES(spin)
-  DEFINE_BORDERS_ROUTINES(spin1field)
-  DEFINE_BORDERS_ROUTINES(color)
-  DEFINE_BORDERS_ROUTINES(spincolor)
-  DEFINE_BORDERS_ROUTINES(spincolor_128)
-  DEFINE_BORDERS_ROUTINES(halfspincolor)
-  DEFINE_BORDERS_ROUTINES(colorspinspin)
-  DEFINE_BORDERS_ROUTINES(spinspin)
-  DEFINE_BORDERS_ROUTINES(su3spinspin)
-  DEFINE_BORDERS_ROUTINES(su3)
-  DEFINE_BORDERS_ROUTINES(quad_su3)
-  DEFINE_BORDERS_ROUTINES(single_color)
-  DEFINE_BORDERS_ROUTINES(single_quad_su3)
-  DEFINE_BORDERS_ROUTINES(single_halfspincolor)
+  //buffers
+  EXTERN_COMMUNICATE uint64_t recv_buf_size,send_buf_size;
+  EXTERN_COMMUNICATE char *recv_buf,*send_buf;
+  
+  EXTERN_COMMUNICATE comm_t lx_spin_comm,eo_spin_comm;
+  EXTERN_COMMUNICATE comm_t lx_spin1field_comm,eo_spin1field_comm;
+  EXTERN_COMMUNICATE comm_t lx_color_comm,eo_color_comm;
+  EXTERN_COMMUNICATE comm_t lx_spincolor_comm,eo_spincolor_comm;
+  EXTERN_COMMUNICATE comm_t lx_spincolor_128_comm,eo_spincolor_128_comm;
+  EXTERN_COMMUNICATE comm_t lx_halfspincolor_comm,eo_halfspincolor_comm;
+  EXTERN_COMMUNICATE comm_t lx_colorspinspin_comm,eo_colorspinspin_comm;
+  EXTERN_COMMUNICATE comm_t lx_spinspin_comm,eo_spinspin_comm;
+  EXTERN_COMMUNICATE comm_t lx_su3spinspin_comm,eo_su3spinspin_comm;
+  EXTERN_COMMUNICATE comm_t lx_su3_comm,eo_su3_comm;
+  EXTERN_COMMUNICATE comm_t lx_as2t_su3_comm,eo_as2t_su3_comm;
+  EXTERN_COMMUNICATE comm_t lx_quad_su3_comm,eo_quad_su3_comm;
+  EXTERN_COMMUNICATE comm_t lx_single_color_comm,eo_single_color_comm;
+  EXTERN_COMMUNICATE comm_t lx_single_halfspincolor_comm,eo_single_halfspincolor_comm;
+  EXTERN_COMMUNICATE comm_t lx_single_quad_su3_comm,eo_single_quad_su3_comm;
 }
+
+#undef EXTERN_COMMUNICATE
 
 #endif

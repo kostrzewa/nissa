@@ -8,8 +8,8 @@
 #include <stdint.h>
 #include <stdlib.h>
 
-#include "new_types/float_128.hpp"
-#include "new_types/new_types_definitions.hpp"
+#include "communicate/communicate.hpp"
+#include "geometry/geometry_lx.hpp"
 #include "routines/ios.hpp"
 #include "routines/math_routines.hpp"
 #ifdef USE_THREADS
@@ -17,8 +17,10 @@
 #endif
 
 #include "debug.hpp"
-#include "global_variables.hpp"
 #include "thread_macros.hpp"
+
+#define EXTERN_VECTORS
+#include "vectors.hpp"
 
 //#define DEBUG
 
@@ -179,7 +181,7 @@ namespace nissa
     int64_t tot=0;
     nissa_vect *curr=&(main_vect);
     do
-      {  
+      {
 	tot+=curr->nel*curr->size_per_el;
 	curr=curr->next;
       }
@@ -209,13 +211,19 @@ namespace nissa
       }
   }
   
-  //allocate an nissa vector 
+  //allocate an nissa vector
   void *internal_nissa_malloc(const char *tag,int64_t nel,int64_t size_per_el,const char *type,const char *file,int line)
   {
     GET_THREAD_ID();
     if(IS_MASTER_THREAD)
       {
 	IF_VECT_NOT_INITIALIZED() initialize_main_vect();
+	
+	if(VERBOSITY_LV3)
+	  {
+	    master_printf("Allocating vector ");
+	    vect_content_printf(last_vect);
+	  }
 	
 	int64_t size=nel*size_per_el;
 	//try to allocate the new vector
@@ -239,12 +247,6 @@ namespace nissa
 	
 	last_vect->next=nv;
 	last_vect=nv;
-	
-	if(VERBOSITY_LV3)
-	  {
-	    master_printf("Allocated vector ");
-	    vect_content_printf(last_vect);
-	  }
 	
 	//define returned pointer and check for its alignement
 	return_malloc_ptr=(void*)(last_vect+1);
@@ -315,7 +317,7 @@ namespace nissa
 	nissa_a->flag=nissa_b->flag;
 	
 	//sync so we are sure that all threads are here
-	THREAD_BARRIER();      
+	THREAD_BARRIER();
       }
   }
   

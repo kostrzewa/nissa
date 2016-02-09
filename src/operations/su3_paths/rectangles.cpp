@@ -2,14 +2,13 @@
  #include "config.hpp"
 #endif
 
-#include "base/global_variables.hpp"
 #include "base/thread_macros.hpp"
 #include "base/vectors.hpp"
-#include "communicate/communicate.hpp"
+#include "communicate/edges.hpp"
+#include "geometry/geometry_eo.hpp"
 #include "linalgs/linalgs.hpp"
 #include "new_types/complex.hpp"
-#include "new_types/new_types_definitions.hpp"
-#include "new_types/su3.hpp"
+#include "new_types/su3_op.hpp"
 #include "routines/ios.hpp"
 #ifdef USE_THREADS
  #include "routines/thread.hpp"

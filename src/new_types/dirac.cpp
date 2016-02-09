@@ -2,17 +2,19 @@
  #include "config.hpp"
 #endif
 
+#define EXTERN_DIRAC
+#include "dirac.hpp"
+
 #include <math.h>
 #include <string.h>
 
 #include "complex.hpp"
 #include "dirac.hpp"
-#include "new_types_definitions.hpp"
 #include "spin.hpp"
 #include "su3.hpp"
 
 #include "base/debug.hpp"
-#include "base/global_variables.hpp"
+#include "geometry/geometry_lx.hpp"
 
 namespace nissa
 {

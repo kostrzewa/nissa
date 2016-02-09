@@ -1,3 +1,6 @@
+//partally based on A.Deuzeman, S.Reker and C.Urbach "lemon" library,
+//arXiv:1106.4177
+
 #ifdef HAVE_CONFIG_H
  #include "config.hpp"
 #endif
@@ -7,8 +10,6 @@
 #include <string.h>
 
 #include "base/debug.hpp"
-#include "base/global_variables.hpp"
-#include "base/macros.hpp"
 #include "base/thread_macros.hpp"
 #include "base/vectors.hpp"
 #include "geometry/geometry_lx.hpp"
@@ -16,11 +17,16 @@
 #include "routines/ios.hpp"
 #include "routines/mpi_routines.hpp"
 
+#include "ILDG_File.hpp"
 #include "endianness.hpp"
 
 #ifdef USE_THREADS
  #include "routines/thread.hpp"
 #endif
+
+#define ILDG_MAGIC_NO                   0x456789ab
+#define ILDG_MB_MASK                    ((uint16_t)0x80)
+#define ILDG_ME_MASK                    ((uint16_t)0x40)
 
 namespace nissa
 {
@@ -107,25 +113,23 @@ namespace nissa
   
   //open a file
 #ifdef USE_MPI_IO
-  ILDG_File ILDG_File_open(const char *path,int amode)
+  ILDG_File ILDG_File_open(std::string path,int amode)
 #else
-    ILDG_File ILDG_File_open(const char *path,const char *mode)
+    ILDG_File ILDG_File_open(std::string path,const char *mode)
 #endif
   {
     ILDG_File file;
-    char in_path[1024];
-    sprintf(in_path,"%s",path);
 #ifdef USE_MPI_IO
-    decript_MPI_error(MPI_File_open(cart_comm,in_path,amode,MPI_INFO_NULL,&file),"while opening file %s",path);
+    decript_MPI_error(MPI_File_open(MPI_COMM_WORLD,(char*)path.c_str(),amode,MPI_INFO_NULL,&file),"while opening file %s",path.c_str());
 #else
-    file=fopen(in_path,mode);
-    if(file==NULL) crash("while opening file %s",path);
+    file=fopen(path.c_str(),mode);
+    if(file==NULL) crash("while opening file %s",path.c_str());
 #endif
     
     return file;
   }
   
-  ILDG_File ILDG_File_open_for_read(const char *path)
+  ILDG_File ILDG_File_open_for_read(std::string path)
   {
 #ifdef USE_MPI_IO
     return ILDG_File_open(path,MPI_MODE_RDONLY);
@@ -134,14 +138,14 @@ namespace nissa
 #endif
   }
   
-  ILDG_File ILDG_File_open_for_write(const char *path)
+  ILDG_File ILDG_File_open_for_write(std::string path)
   {
     ILDG_File file;
 #ifdef USE_MPI_IO
-    file=ILDG_File_open(path,MPI_MODE_WRONLY|MPI_MODE_CREATE);
-    decript_MPI_error(MPI_File_set_size(file,0),"while resizing to 0 the file %s",path);
+    file=ILDG_File_open(path.c_str(),MPI_MODE_WRONLY|MPI_MODE_CREATE);
+    decript_MPI_error(MPI_File_set_size(file,0),"while resizing to 0 the file %s",path.c_str());
 #else
-    file=ILDG_File_open(path,"w");
+    file=ILDG_File_open(path.c_str(),"w");
 #endif
     return file;
   }
@@ -312,7 +316,7 @@ namespace nissa
     iloc_ILDG=iglb_ILDG%loc_vol;
   }
   
-  //define the reampping from the layout having in each rank a consecutive block of data holding a 
+  //define the remapping from the layout having in each rank a consecutive block of data holding a
   //consecutive piece of ildg data to canonical lx
   void index_from_ILDG_remapping(int &irank_lx,int &iloc_lx,int iloc_ILDG,void *pars)
   {
@@ -339,7 +343,7 @@ namespace nissa
   void ILDG_File_read_all(void *data,ILDG_File &file,size_t nbytes_req)
   {
     //padding
-    ILDG_File_seek_to_next_eight_multiple(file);  
+    ILDG_File_seek_to_next_eight_multiple(file);
     
 #ifdef USE_MPI_IO
     //reading and taking status/error
@@ -404,20 +408,19 @@ namespace nissa
 	MPI_Status status;
 	decript_MPI_error(MPI_File_write(file,data,nbytes_req,MPI_BYTE,&status),"while writing from first node");
 	
-	//check to have wrote 
-	size_t nbytes_wrote=MPI_Get_count_size_t(status);
+	//check to have written
+	size_t nbytes_written=MPI_Get_count_size_t(status);
 #else
-	size_t nbytes_wrote=fwrite(data,1,nbytes_req,file);
+	size_t nbytes_written=fwrite(data,1,nbytes_req,file);
 #endif
-	if(nbytes_wrote!=nbytes_req)
-	  crash("wrote %u bytes instead of %u required",nbytes_wrote,nbytes_req);
+	if(nbytes_written!=nbytes_req) crash("wrote %u bytes instead of %u required",nbytes_written,nbytes_req);
 	
 	//this is a blocking routine
 	ILDG_File_skip_nbytes(file,0);
       }
     else
       ILDG_File_skip_nbytes(file,nbytes_req);
-
+    
     //sync
 #ifdef USE_MPI_IO
     MPI_File_sync(file);
@@ -456,13 +459,13 @@ namespace nissa
       }
     
     //write the header
-    ILDG_File_master_write(file,(void*)&header,sizeof(ILDG_header));  
+    ILDG_File_master_write(file,(void*)&header,sizeof(ILDG_header));
   }
   
   ////////////////////////////////////// more complicated tasks //////////////////////////////////////
   
   //search a particular record in a file
-  int ILDG_File_search_record(ILDG_header &header,ILDG_File &file,const char *record_name,ILDG_message *mess=NULL)
+  int ILDG_File_search_record(ILDG_header &header,ILDG_File &file,const char *record_name,ILDG_message *mess)
   {
     ILDG_message *last_mess=mess;
     
@@ -506,8 +509,7 @@ namespace nissa
     
     //count read bytes
     size_t nbytes_read=MPI_Get_count_size_t(status);
-    if((uint64_t)nbytes_read!=header.data_length/nranks)
-      crash("read %u bytes instead than %u",nbytes_read,header.data_length/nranks);
+    if((uint64_t)nbytes_read!=header.data_length/nranks) crash("read %u bytes instead than %u",nbytes_read,header.data_length/nranks);
     
     //put the view to original state and place at the end of the record, including padding
     normal_view.pos+=ceil_to_next_eight_multiple(header.data_length);
@@ -583,9 +585,9 @@ namespace nissa
 	nissa_free(mess);
       }
   }
-
+  
   ////////////////////////////////////// external writing interfaces //////////////////////////////////////
-
+  
   //remap to ildg
   THREADABLE_FUNCTION_3ARG(remap_to_write_ildg_data, char*,buf, char*,data, int,nbytes_per_site)
   {
@@ -641,9 +643,8 @@ namespace nissa
     ILDG_File_set_view(file,normal_view);
     
     //count wrote bytes
-    size_t nbytes_wrote=MPI_Get_count_size_t(status);
-    if((uint64_t)nbytes_wrote!=header.data_length/nranks)
-      crash("wrote %u bytes instead than %u",nbytes_wrote,header.data_length/nranks);
+    size_t nbytes_written=MPI_Get_count_size_t(status);
+    if((uint64_t)nbytes_written!=header.data_length/nranks) crash("written %u bytes instead than %u",nbytes_written,header.data_length/nranks);
     
     //reset mapped types
     unset_mapped_types(scidac_view.etype,scidac_view.ftype);
@@ -659,7 +660,7 @@ namespace nissa
     vector_remap_t *rem=new vector_remap_t(loc_vol,index_to_ILDG_remapping,NULL);
     rem->remap(buf,data,header.data_length/glb_vol);
     delete rem;
-
+    
     //write
     ILDG_Offset nbytes_wrote=fwrite(buf,1,nbytes_per_rank,file);
     if(nbytes_wrote!=nbytes_per_rank) crash("wrote %d bytes instead of %d",nbytes_wrote,nbytes_per_rank);

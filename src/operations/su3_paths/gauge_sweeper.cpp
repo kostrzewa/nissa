@@ -2,11 +2,11 @@
  #include "config.hpp"
 #endif
 
-#include "base/global_variables.hpp"
 #include "base/debug.hpp"
 #include "base/thread_macros.hpp"
 #include "geometry/geometry_lx.hpp"
-#include "new_types/su3.hpp"
+#include "hmc/gauge/Symanzik_action.hpp"
+#include "new_types/su3_op.hpp"
 #include "routines/ios.hpp"
 #ifdef USE_THREADS
  #include "routines/thread.hpp"
@@ -18,9 +18,12 @@
 
 #include <stdlib.h>
 
+#define EXTERN
+#include "gauge_sweeper.hpp"
+
 namespace nissa
-{  
-  void add_tlSym_staples(int *ilink_to_be_used,all_to_all_gathering_list_t &gat,int ivol,int mu);
+{
+  void add_Symanzik_staples(int *ilink_to_be_used,all_to_all_gathering_list_t &gat,int ivol,int mu);
   //constructor
   gauge_sweeper_t::gauge_sweeper_t()
   {
@@ -95,7 +98,7 @@ namespace nissa
 		    nsite_per_box_dir_par[par+gpar*(dir+NDIM*ibox)]++;
 		  }
 	      }
-	  }  
+	  }
     comm_init_time+=take_time();
   }
   
@@ -148,7 +151,7 @@ namespace nissa
                   if(iter==0)
                     {
                       hit[dir+NDIM*ivol]=par+1;
-
+		      
                       if(0)
 			{
 			  printf("ibox %d dir %d par %d hitting %d, ivol %d{%d",
@@ -197,7 +200,7 @@ namespace nissa
   }
   
   //init the list of staples
-  void gauge_sweeper_t::init_staples(int ext_nlinks_per_staples_of_link,void(*ext_add_staples_per_link)(int *ilink_to_be_used,all_to_all_gathering_list_t &gat,int ivol,int mu),void (*ext_compute_staples)(su3 staples,su3 *links,int *ilinks))
+  void gauge_sweeper_t::init_staples(int ext_nlinks_per_staples_of_link,void(*ext_add_staples_per_link)(int *ilink_to_be_used,all_to_all_gathering_list_t &gat,int ivol,int mu),void (*ext_compute_staples)(su3 staples,su3 *links,int *ilinks,double C1))
   {
     //take external nlinks and mark
     if(!par_geom_inited) crash("call geom initializer before");
@@ -220,7 +223,7 @@ namespace nissa
 	delete gl[ibox];
       }
     
-    //compute the maximum number of link to send and receive and allocate buffers
+    //compute the maximum number of links to send and receive and allocate buffers
     for(int ibox=0;ibox<(1<<NDIM);ibox++)
       {
 	max_cached_link=std::max(max_cached_link,box_comm[ibox]->nel_in);
@@ -232,7 +235,7 @@ namespace nissa
     //check cached
     verbosity_lv3_master_printf("Max cached links: %d\n",max_cached_link);
     if(max_cached_link>bord_vol+edge_vol) crash("larger buffer needed [really? recheck this]");
-
+    
     //perform two checks
     check_hit_exactly_once();
     check_hit_in_the_exact_order();
@@ -251,7 +254,7 @@ namespace nissa
     NISSA_CHUNK_WORKLOAD(bdp_start,chunk_load,bdp_end,0,(1<<NDIM)*NDIM*gs->gpar,THREAD_ID,NACTIVE_THREADS);
     int ibase=0;
     for(int bdp=0;bdp<bdp_start;bdp++) ibase+=gs->nsite_per_box_dir_par[bdp];
-
+    
     for(int bdp=bdp_start;bdp<bdp_end;bdp++)
       {
 	//sort and increase the base
@@ -259,13 +262,13 @@ namespace nissa
 	      gs->nlinks_per_staples_of_link*gs->nsite_per_box_dir_par[bdp],
 	      2*sizeof(int),
 	      compare_link_source_dest);
-	ibase+=gs->nsite_per_box_dir_par[bdp];	       
+	ibase+=gs->nsite_per_box_dir_par[bdp];
       }
   }
   THREADABLE_FUNCTION_END
   
   //find the place where each link must be copied to access it sequentially
-  void gauge_sweeper_t::find_packing_index(void (*ext_compute_staples_packed)(su3 staples,su3 *links))
+  void gauge_sweeper_t::find_packing_index(void (*ext_compute_staples_packed)(su3 staples,su3 *links,double C1))
   {
     if(!packing_inited)
       {
@@ -288,7 +291,7 @@ namespace nissa
 		//scan the destination
 		for(int ibox_dir_par=0;ibox_dir_par<ns;ibox_dir_par++)
 		  for(int ilink=0;ilink<nlinks_per_staples_of_link;ilink++)
-		    {		  
+		    {
 		      packing_link_source_dest[2*(ilink+nlinks_per_staples_of_link*(ibox_dir_par+ibase))+0]=
 			ilink_per_staples[(ibox_dir_par+ibase)*nlinks_per_staples_of_link+ilink];
 		      packing_link_source_dest[2*(ilink+nlinks_per_staples_of_link*(ibox_dir_par+ibase))+1]=
@@ -303,7 +306,7 @@ namespace nissa
 		    }
 		
 		//increase the base
-		ibase+=nsite_per_box_dir_par[par+gpar*(dir+NDIM*ibox)];	       
+		ibase+=nsite_per_box_dir_par[par+gpar*(dir+NDIM*ibox)];
 	      }
 	
 	reorder_packing_link_source_dest(this);
@@ -332,13 +335,11 @@ namespace nissa
 	//scan all the elements of sub-box, selecting only those with the good parity
 	for(int dir=0;dir<NDIM;dir++)
 	  for(int par=0;par<gs->gpar;par++)
-	    {	  
-	      for(int ibox_dir_par=ibase;ibox_dir_par<ibase+gs->nsite_per_box_dir_par[par+gs->gpar*(dir+NDIM*ibox)];
-		  ibox_dir_par++)
+	    {
+	      for(int ibox_dir_par=ibase;ibox_dir_par<ibase+gs->nsite_per_box_dir_par[par+gs->gpar*(dir+NDIM*ibox)];ibox_dir_par++)
 		{
 		  int ivol=gs->ivol_of_box_dir_par[ibox_dir_par];
-		  gs->add_staples_per_link(gs->ilink_per_staples+ibox_dir_par*gs->nlinks_per_staples_of_link,*(gl[ibox]),
-					   ivol,dir);
+		  gs->add_staples_per_link(gs->ilink_per_staples+ibox_dir_par*gs->nlinks_per_staples_of_link,*(gl[ibox]),ivol,dir);
 		}
 	      ibase+=gs->nsite_per_box_dir_par[par+gs->gpar*(dir+NDIM*ibox)];
 	    }
@@ -346,25 +347,10 @@ namespace nissa
     THREAD_BARRIER();
   }
   THREADABLE_FUNCTION_END
-
+  
   //wrapper to use threads
   void gauge_sweeper_t::add_staples_required_links(all_to_all_gathering_list_t **gl)
-  {
-    add_staples_required_links_to_gauge_sweep(this,gl);
-  }
-
-  //update a single link using either heat-bath or overrelaxation
-  void gauge_sweeper_t::update_link_using_staples(quad_su3 *conf,int ivol,int dir,su3 staples,quenched_update_alg_t update_alg,double beta,int nhits)
-  {
-    switch(update_alg)
-      {
-      case HEATBATH: su3_find_heatbath(conf[ivol][dir],conf[ivol][dir],staples,beta,nhits,loc_rnd_gen+ivol);break;
-      case OVERRELAX: su3_find_overrelaxed(conf[ivol][dir],conf[ivol][dir],staples,nhits);break;
-      case COOL_FULLY: su3_unitarize_maximal_trace_projecting(conf[ivol][dir],staples);break;
-      case COOL_PARTLY: su3_unitarize_maximal_trace_projecting_iteration(conf[ivol][dir],staples);break;
-      default: crash("unknown update algorithm");
-      }
-  }
+  {add_staples_required_links_to_gauge_sweep(this,gl);}
   
   //pack all the links required to compute staples
   void gauge_sweeper_t::pack_links(quad_su3 *conf,int ibase,int nbox_dir_par)
@@ -400,147 +386,36 @@ namespace nissa
 	SU3_TO_BI_SU3(((bi_su3*)packing_link_buf)[true_dest],((su3*)conf)[isource],vnode);
 #else
 	su3_copy(packing_link_buf[idest],((su3*)conf)[isource]);
-#endif	      
+#endif
       }
     THREAD_BARRIER();
   }
   
-#ifdef BGQ
-  void compute_tlSym_staples_packed_bgq(su3 staples1,su3 staples2,bi_su3 *links);
-#endif
-  
-  //sweep the conf using the appropriate routine to compute staples
-  THREADABLE_FUNCTION_5ARG(sweep_conf_fun, quad_su3*,conf, gauge_sweeper_t*,gs, quenched_update_alg_t,update_alg, double,beta, int,nhits)
-  {
-    GET_THREAD_ID();
-    
-#ifdef BGQ
-    su3 *staples_list;
-    if(gs->packing_inited)
-      {
-	int staples_list_size=0;
-	for(int ibox=0;ibox<(1<<NDIM);ibox++)
-	  for(int dir=0;dir<NDIM;dir++)
-	    for(int par=0;par<gs->gpar;par++)
-	    staples_list_size=std::max(staples_list_size,2*((gs->nsite_per_box_dir_par[par+gs->gpar*(dir+NDIM*ibox)]+1)/2));
-	staples_list=nissa_malloc("staples_list",staples_list_size,su3); 
-      }
-#endif
-    
-    int ibase=0;
-    for(int ibox=0;ibox<(1<<NDIM);ibox++)
-      {
-	//communicate needed links
-	if(IS_MASTER_THREAD) gs->comm_time-=take_time();
-	gs->box_comm[ibox]->communicate(conf,conf,sizeof(su3),NULL,NULL,ibox+100);
-	if(IS_MASTER_THREAD)
-	  {
-	    gs->comm_time+=take_time();
-	    gs->comp_time-=take_time();
-	  }
-	for(int dir=0;dir<NDIM;dir++)
-	  for(int par=0;par<gs->gpar;par++)
-	    {
-	      int box_dir_par_size=gs->nsite_per_box_dir_par[par+gs->gpar*(dir+NDIM*ibox)];
-	      
-	      //pack
-	      if(gs->packing_inited) gs->pack_links(conf,ibase,box_dir_par_size);
-
-#ifdef BGQ
-	      //finding half box_dir_par_size
-	      int box_dir_par_sizeh=box_dir_par_size/2;
-	      if(box_dir_par_sizeh*2!=box_dir_par_size) box_dir_par_sizeh++;
-	      if(gs->packing_inited)
-		NISSA_PARALLEL_LOOP(ibox_dir_par,0,box_dir_par_sizeh)
-		  compute_tlSym_staples_packed_bgq(staples_list[ibox_dir_par],staples_list[ibox_dir_par+box_dir_par_sizeh],
-					 ((bi_su3*)gs->packing_link_buf)+ibox_dir_par*gs->nlinks_per_staples_of_link);
-	      THREAD_BARRIER();
-#endif	      
-	      
-	      //scan the whole box
-	      NISSA_PARALLEL_LOOP(ibox_dir_par,ibase,ibase+box_dir_par_size)
-		{
-		  //compute the staples
-		  su3 staples;
-		  
-		  if(gs->packing_inited) 
-		    {
-#ifdef BGQ
-		      su3_copy(staples,staples_list[ibox_dir_par-ibase]);
-#else
-		      gs->compute_staples_packed(staples,
-					      gs->packing_link_buf+(ibox_dir_par-ibase)*gs->nlinks_per_staples_of_link);
-#endif
-		    }
-		  else
-		    gs->compute_staples(staples,
-					   (su3*)conf,gs->ilink_per_staples+gs->nlinks_per_staples_of_link*ibox_dir_par);
-
-		  //find new link
-		  int ivol=gs->ivol_of_box_dir_par[ibox_dir_par];
-		  gs->update_link_using_staples(conf,ivol,dir,staples,update_alg,beta,nhits);
-		}
-	      THREAD_BARRIER();
-	      
-	      //increment the box-dir-par subset
-	      ibase+=box_dir_par_size;
-	    }
-	if(IS_MASTER_THREAD) gs->comp_time+=take_time();
-      }
-  
-    set_borders_invalid(conf);
-#ifdef BGQ
-    if(gs->packing_inited) nissa_free(staples_list);
-#endif
-  }
-  THREADABLE_FUNCTION_END
-
-  //wrapper to use threads
-  void gauge_sweeper_t::sweep_conf(quad_su3 *conf,quenched_update_alg_t up_alg,double beta,int nhits)
-  {sweep_conf_fun(conf,this,up_alg,beta,nhits);}
-  
-  //return the appropriate sweeper
-  gauge_sweeper_t *get_sweeper(gauge_action_name_t gauge_action_name)
-  {
-    gauge_sweeper_t *sweeper=NULL;
-    switch(gauge_action_name)
-      {
-      case WILSON_GAUGE_ACTION:sweeper=Wilson_sweeper;break;
-      case TLSYM_GAUGE_ACTION:sweeper=tlSym_sweeper;break;
-      case UNSPEC_GAUGE_ACTION:crash("unspecified action");break;
-      default: crash("not implemented action");break;
-      }
-    
-    return sweeper;
-  }
-
-  ///////////////////////////////////// tlSym action //////////////////////////
-  
-  //compute the parity according to the tlSym requirements
-  int tlSym_par(coords ivol_coord,int dir)
+  //compute the parity according to the Symanzik requirements
+  int Symanzik_par(coords ivol_coord,int dir)
   {
     int site_par=0;
     for(int mu=0;mu<NDIM;mu++) site_par+=((mu==dir)?2:1)*ivol_coord[mu];
-
+    
     site_par=site_par%NDIM;
-  
+    
     return site_par;
   }
-
+  
   //add all links needed for a certain site
-  void add_tlSym_staples(int *ilink_to_be_used,all_to_all_gathering_list_t &gat,int ivol,int mu)
+  void add_Symanzik_staples(int *ilink_to_be_used,all_to_all_gathering_list_t &gat,int ivol,int mu)
   {
-    int *A=glb_coord_of_loclx[ivol];                        //       P---O---N    
-    coords B,C,D,E,F,G,H,I,J,K,L,M,N,O,P;                   //       |   |   |    
+    int *A=glb_coord_of_loclx[ivol];                        //       P---O---N
+    coords B,C,D,E,F,G,H,I,J,K,L,M,N,O,P;                   //       |   |   |
     //find coord mu                                         //   H---G---F---E---D
     K[mu]=L[mu]=M[mu]=(A[mu]-1+glb_size[mu])%glb_size[mu];  //   |   |   |   |   |
     I[mu]=J[mu]=B[mu]=C[mu]=A[mu];                          //   I---J---A---B---C
-    D[mu]=E[mu]=F[mu]=G[mu]=H[mu]=(A[mu]+1)%glb_size[mu];   //       |   |   |    
-    N[mu]=O[mu]=P[mu]=(A[mu]+2)%glb_size[mu];               //       K---L---M    
+    D[mu]=E[mu]=F[mu]=G[mu]=H[mu]=(A[mu]+1)%glb_size[mu];   //       |   |   |
+    N[mu]=O[mu]=P[mu]=(A[mu]+2)%glb_size[mu];               //       K---L---M
     for(int inu=0;inu<NDIM-1;inu++)
-      {            
+      {
 	int nu=perp_dir[mu][inu];
-
+	
 	//copy orthogonal coords
 #if NDIM>=3
 	for(int irh=0;irh<NDIM-2;irh++)
@@ -549,7 +424,7 @@ namespace nissa
 	    B[rh]=C[rh]=D[rh]=E[rh]=F[rh]=G[rh]=H[rh]=I[rh]=J[rh]=K[rh]=L[rh]=M[rh]=N[rh]=O[rh]=P[rh]=A[rh];
 	  }
 #endif
-
+	
 	//find coord nu
 	H[nu]=I[nu]=(A[nu]-2+glb_size[nu])%glb_size[nu];
 	K[nu]=J[nu]=G[nu]=P[nu]=(I[nu]+1)%glb_size[nu];
@@ -604,12 +479,12 @@ namespace nissa
       }
     *(ilink_to_be_used++)=gat.add_conf_link_for_paths(F,mu); //vertical common link up
     *(ilink_to_be_used++)=gat.add_conf_link_for_paths(L,mu); //verical common link dw
-  
+    
     //8*(NDIM-1) link missing, 2 readded = -22 links (in 4d)
   }
-
+  
   //compute the summ of the staples pointed by "ilinks"
-  void compute_tlSym_staples(su3 staples,su3 *links,int *ilinks)
+  void compute_Symanzik_staples(su3 staples,su3 *links,int *ilinks,double C1)
   {
     su3 squares,rectangles,up_rectangles,dw_rectangles;
     su3_put_to_zero(squares);
@@ -619,7 +494,7 @@ namespace nissa
     
     const int PARTIAL=2;
     for(int inu=0;inu<NDIM-1;inu++)
-      {  
+      {
 	su3 hb;
 	//backward square staple
 	unsafe_su3_dag_prod_su3(hb,links[ilinks[ 0]],links[ilinks[ 1]]);
@@ -628,7 +503,7 @@ namespace nissa
 	su3 hf;
 	unsafe_su3_prod_su3(hf,links[ilinks[ 3]],links[ilinks[ 4]]);
 	su3_summ_the_prod_su3_dag(squares,hf,links[ilinks[ 5]]);
-      
+	
 	su3 temp1,temp2;
 	//backward dw rectangle
 	unsafe_su3_dag_prod_su3(temp2,links[ilinks[ 6]],links[ilinks[ 7]],PARTIAL);
@@ -658,22 +533,23 @@ namespace nissa
 	//forward up rectangle
 	unsafe_su3_prod_su3(temp2,hf,links[ilinks[26]]);
 	su3_summ_the_prod_su3_dag(up_rectangles,temp2,links[ilinks[27]]);
-
+	
 	ilinks+=28;
       }
     
     //close the two partial rectangles
     su3_summ_the_prod_su3_dag(rectangles,up_rectangles,links[ilinks[ 0]]);
     su3_summ_the_dag_prod_su3(rectangles,links[ilinks[ 1]],dw_rectangles);
-  
+    
     //compute the summed staples
-    double b1=-1.0/12,b0=1-8*b1;
-    su3_linear_comb(staples,squares,b0,rectangles,b1);
+    su3_linear_comb(staples,squares,get_C0(C1),rectangles,C1);
   }
   
   //compute the summ of the staples pointed by "ilinks"
-  void compute_tlSym_staples_packed(su3 staples,su3 *links)
+  void compute_Symanzik_staples_packed(su3 staples,su3 *links,double C1)
   {
+    double C0=get_C0(C1);
+    
     su3 squares,rectangles,up_rectangles,dw_rectangles;
     su3_put_to_zero(squares);
     su3_put_to_zero(rectangles);
@@ -682,7 +558,7 @@ namespace nissa
     
     const int PARTIAL=2;
     for(int inu=0;inu<NDIM-1;inu++)
-      {  
+      {
 	su3 hb;
 	//backward square staple
 	unsafe_su3_dag_prod_su3(hb,links[ 0],links[ 1]);
@@ -691,7 +567,7 @@ namespace nissa
 	su3 hf;
 	unsafe_su3_prod_su3(hf,links[ 3],links[ 4]);
 	su3_summ_the_prod_su3_dag(squares,hf,links[ 5]);
-      
+	
 	su3 temp1,temp2;
 	//backward dw rectangle
 	unsafe_su3_dag_prod_su3(temp2,links[ 6],links[ 7],PARTIAL);
@@ -721,36 +597,36 @@ namespace nissa
 	//forward up rectangle
 	unsafe_su3_prod_su3(temp2,hf,links[26]);
 	su3_summ_the_prod_su3_dag(up_rectangles,temp2,links[27]);
-
+	
 	links+=28;
       }
     
     //close the two partial rectangles
     su3_summ_the_prod_su3_dag(rectangles,up_rectangles,links[ 0]);
     su3_summ_the_dag_prod_su3(rectangles,links[ 1],dw_rectangles);
-  
+    
     //compute the summed staples
-    double b1=-1.0/12,b0=1-8*b1;
-    su3_linear_comb(staples,squares,b0,rectangles,b1);
+    su3_linear_comb(staples,squares,C0,rectangles,C1);
   }
   
 #ifdef BGQ
   //compute the summ of the staples pointed by "ilinks"
-  void compute_tlSym_staples_packed_bgq(su3 staples1,su3 staples2,bi_su3 *links,double b0,double b1)
+  void compute_Symanzik_staples_packed_bgq(su3 staples1,su3 staples2,bi_su3 *links,double C1)
   {
+    double C0=get_C0(C1);
     bi_su3 squares,rectangles,up_rectangles,dw_rectangles;
     
     BI_SU3_PUT_TO_ZERO(squares);
     BI_SU3_PUT_TO_ZERO(rectangles);
     BI_SU3_PUT_TO_ZERO(up_rectangles);
     BI_SU3_PUT_TO_ZERO(dw_rectangles);
-  
+    
     DECLARE_REG_BI_SU3(REG_U1);
     DECLARE_REG_BI_SU3(REG_U2);
     DECLARE_REG_BI_SU3(REG_U3);
     
     for(int inu=0;inu<NDIM-1;inu++)
-      {  
+      {
 	//backward square staple
 	bi_su3 hb;
 	REG_LOAD_BI_SU3(REG_U2,links[0]);
@@ -771,7 +647,7 @@ namespace nissa
 	REG_LOAD_BI_SU3(REG_U3,links[5]);
 	REG_BI_SU3_SUMM_THE_PROD_BI_SU3_DAG(REG_U2,REG_U1,REG_U3);
 	STORE_REG_BI_SU3(squares,REG_U2);
-      
+	
 	//backward dw rectangle
 	REG_LOAD_BI_SU3(REG_U2,links[6]);
 	REG_LOAD_BI_SU3(REG_U3,links[7]);
@@ -832,7 +708,7 @@ namespace nissa
 	REG_LOAD_BI_SU3(REG_U2,up_rectangles);
 	REG_BI_SU3_SUMM_THE_PROD_BI_SU3_DAG(REG_U2,REG_U1,REG_U3);
 	STORE_REG_BI_SU3(up_rectangles,REG_U2);
-
+	
 	links+=28;
       }
     
@@ -847,55 +723,40 @@ namespace nissa
     STORE_REG_BI_SU3(rectangles,REG_U1);
     
     //compute the summed staples
-    DECLARE_REG_BI_COMPLEX(reg_b0);
-    DECLARE_REG_BI_COMPLEX(reg_b1);
-    REG_SPLAT_BI_COMPLEX(reg_b0,b0);
-    REG_SPLAT_BI_COMPLEX(reg_b1,b1);
+    DECLARE_REG_BI_COMPLEX(reg_c0);
+    DECLARE_REG_BI_COMPLEX(reg_c1);
+    REG_SPLAT_BI_COMPLEX(reg_c0,C0);
+    REG_SPLAT_BI_COMPLEX(reg_c1,C1);
     REG_LOAD_BI_SU3(REG_U2,squares);
-    REG_BI_SU3_PROD_4DOUBLE(REG_U3,REG_U2,reg_b0);
-    REG_BI_SU3_SUMM_THE_PROD_4DOUBLE(REG_U3,REG_U3,REG_U1,reg_b1);
+    REG_BI_SU3_PROD_4DOUBLE(REG_U3,REG_U2,reg_c0);
+    REG_BI_SU3_SUMM_THE_PROD_4DOUBLE(REG_U3,REG_U3,REG_U1,reg_c1);
     
     //split staples
     bi_su3 bi_staples;
     STORE_REG_BI_SU3(bi_staples,REG_U3);
     BI_SU3_TO_SU3(staples1,staples2,bi_staples);
   }
-  void compute_tlSym_staples_packed_bgq(su3 staples1,su3 staples2,bi_su3 *links)
-  {
-    double b1=-1.0/12,b0=1-8*b1;
-    compute_tlSym_staples_packed_bgq(staples1,staples2,links,b0,b1);
-  }
-  void compute_tlSym_force_packed_bgq(su3 staples1,su3 staples2,bi_su3 *links,double beta,bool phase_pres)
-  {
-    //coefficient of rectangles and squares, including beta
-    double b1=-1.0/12,b0=1-8*b1;
-    double c1=-b1*beta/3,c0=-b0*beta/3;
-    //the stag phases add (-1)^area
-    if(phase_pres) c0=-c0; 
-    compute_tlSym_staples_packed_bgq(staples1,staples2,links,c0,c1);
-    safe_su3_hermitian(staples1,staples1);
-    safe_su3_hermitian(staples2,staples2);
-  }
 #endif
-
+  
   //initialize the tlSym sweeper using the above defined routines
-  void init_tlSym_sweeper()
+  void init_Symanzik_sweeper()
   {
-    if(!tlSym_sweeper->staples_inited)
+    if(!Symanzik_sweeper->staples_inited)
       {
-	verbosity_lv3_master_printf("Initializing tlSym sweeper\n");
+	verbosity_lv3_master_printf("Initializing Symanzik sweeper\n");
 	//checking consistency for gauge_sweeper initialization
 	for(int mu=0;mu<NDIM;mu++) if(loc_size[mu]<4) crash("loc_size[%d]=%d must be at least 4",mu,loc_size[mu]);
-	//initialize the tlSym sweeper
-	const int nlinks_per_tlSym_staples_of_link=(NDIM-1)*2*(3+5*3)-(NDIM-1)*8+2;
-	tlSym_sweeper->init_box_dir_par_geometry(4,tlSym_par);
-	tlSym_sweeper->init_staples(nlinks_per_tlSym_staples_of_link,add_tlSym_staples,compute_tlSym_staples);
+	//initialize the Symanzik sweeper
+	const int nlinks_per_Symanzik_staples_of_link=(NDIM-1)*2*(3+5*3)-(NDIM-1)*8+2;
+	Symanzik_sweeper->init_box_dir_par_geometry(4,Symanzik_par);
+	Symanzik_sweeper->init_staples(nlinks_per_Symanzik_staples_of_link,add_Symanzik_staples,compute_Symanzik_staples);
 #ifdef BGQ
-	tlSym_sweeper->find_packing_index(compute_tlSym_staples_packed);
+	Symanzik_sweeper->compute_staples_packed_bgq=compute_Symanzik_staples_packed_bgq;
+	Symanzik_sweeper->find_packing_index(compute_Symanzik_staples_packed);
 #endif
       }
   }
-
+  
   ///////////////////////////////////////// Wilson ////////////////////////////////////////
   
   //compute the parity according to the Wilson requirements
@@ -903,12 +764,12 @@ namespace nissa
   {
     int site_par=0;
     for(int mu=0;mu<NDIM;mu++) site_par+=ivol_coord[mu];
-
+    
     site_par=site_par%2;
-  
+    
     return site_par;
   }
-
+  
   //add all links needed for a certain site
   void add_Wilson_staples(int *ilink_to_be_used,all_to_all_gathering_list_t &gat,int ivol,int mu)
   {
@@ -918,7 +779,7 @@ namespace nissa
     J[mu]=B[mu]=A[mu];                                      //       J---A---B
     F[mu]=G[mu]=(A[mu]+1)%glb_size[mu];
     for(int inu=0;inu<NDIM-1;inu++)
-      {            
+      {
 	int nu=perp_dir[mu][inu];
 	
 	//copy orthogonal coords
@@ -934,7 +795,7 @@ namespace nissa
 	J[nu]=G[nu]=(A[nu]-1+glb_size[nu])%glb_size[nu];
 	F[nu]=A[nu];
 	B[nu]=(A[nu]+1)%glb_size[nu];
-      
+	
 	//backward square staple
 	*(ilink_to_be_used++)=gat.add_conf_link_for_paths(J,nu);
 	*(ilink_to_be_used++)=gat.add_conf_link_for_paths(J,mu);
@@ -945,14 +806,14 @@ namespace nissa
 	*(ilink_to_be_used++)=gat.add_conf_link_for_paths(F,nu);
       }
   }
-
+  
   //compute the summ of the staples pointed by "ilinks"
-  void compute_Wilson_staples(su3 staples,su3 *links,int *ilinks)
+  void compute_Wilson_staples(su3 staples,su3 *links,int *ilinks,double C1)
   {
     su3_put_to_zero(staples);
-  
+    
     for(int inu=0;inu<NDIM-1;inu++)
-      {  
+      {
 	su3 hb;
 	//backward square staple
 	unsafe_su3_dag_prod_su3(hb,links[ilinks[ 0]],links[ilinks[ 1]]);
@@ -961,10 +822,71 @@ namespace nissa
 	su3 hf;
 	unsafe_su3_prod_su3(hf,links[ilinks[ 3]],links[ilinks[ 4]]);
 	su3_summ_the_prod_su3_dag(staples,hf,links[ilinks[ 5]]);
-
+	
 	ilinks+=6;
       }
   }
+  
+  void compute_Wilson_staples_packed(su3 staples,su3 *links,double C1)
+  {
+    su3_put_to_zero(staples);
+    
+    for(int inu=0;inu<NDIM-1;inu++)
+      {
+	su3 hb;
+	//backward square staple
+	unsafe_su3_dag_prod_su3(hb,links[ 0],links[ 1]);
+	su3_summ_the_prod_su3(staples,hb,links[ 2]);
+	//forward square staple
+	su3 hf;
+	unsafe_su3_prod_su3(hf,links[ 3],links[ 4]);
+	su3_summ_the_prod_su3_dag(staples,hf,links[ 5]);
+	
+	links+=6;
+      }
+  }
+  
+#ifdef BGQ
+  //compute the summ of the staples pointed by "ilinks"
+  void compute_Wilson_staples_packed_bgq(su3 staples1,su3 staples2,bi_su3 *links,double C1)
+  {
+    bi_su3 bi_staples;
+    
+    BI_SU3_PUT_TO_ZERO(bi_staples);
+    
+    DECLARE_REG_BI_SU3(REG_U1);
+    DECLARE_REG_BI_SU3(REG_U2);
+    DECLARE_REG_BI_SU3(REG_U3);
+    
+    for(int inu=0;inu<NDIM-1;inu++)
+      {
+	//backward square staple
+	bi_su3 hb;
+	REG_LOAD_BI_SU3(REG_U2,links[0]);
+	REG_LOAD_BI_SU3(REG_U3,links[1]);
+	REG_BI_SU3_DAG_PROD_BI_SU3(REG_U1,REG_U2,REG_U3);
+	STORE_REG_BI_SU3(hb,REG_U1);
+	REG_LOAD_BI_SU3(REG_U2,bi_staples);
+	REG_LOAD_BI_SU3(REG_U3,links[2]);
+	REG_BI_SU3_SUMM_THE_PROD_BI_SU3(REG_U2,REG_U1,REG_U3);
+	STORE_REG_BI_SU3(bi_staples,REG_U2);
+	//forward square staple
+	bi_su3 hf;
+	REG_LOAD_BI_SU3(REG_U2,links[3]);
+	REG_LOAD_BI_SU3(REG_U3,links[4]);
+	REG_BI_SU3_PROD_BI_SU3(REG_U1,REG_U2,REG_U3);
+	STORE_REG_BI_SU3(hf,REG_U1);
+	REG_LOAD_BI_SU3(REG_U2,bi_staples);
+	REG_LOAD_BI_SU3(REG_U3,links[5]);
+	REG_BI_SU3_SUMM_THE_PROD_BI_SU3_DAG(REG_U2,REG_U1,REG_U3);
+	STORE_REG_BI_SU3(bi_staples,REG_U2);
+	
+	links+=6;
+      }
+    
+    BI_SU3_TO_SU3(staples1,staples2,bi_staples);
+  }
+#endif
   
   //initialize the Wilson sweeper using the above defined routines
   void init_Wilson_sweeper()
@@ -978,19 +900,24 @@ namespace nissa
 	Wilson_sweeper->init_box_dir_par_geometry(2,Wilson_par);
 	const int nlinks_per_Wilson_staples_of_link=6*(NDIM-1);
 	Wilson_sweeper->init_staples(nlinks_per_Wilson_staples_of_link,add_Wilson_staples,compute_Wilson_staples);
+#ifdef BGQ
+	Wilson_sweeper->compute_staples_packed_bgq=compute_Wilson_staples_packed_bgq;
+	Wilson_sweeper->find_packing_index(compute_Wilson_staples_packed);
+#endif
       }
   }
   
   //call the appropriate sweeper intializator
   void init_sweeper(gauge_action_name_t gauge_action_name)
   {
-#ifdef USE_THREADS
-    if(!thread_pool_locked) crash("call from non-parallel environment");
-#endif
+    MANDATORY_NOT_PARALLEL;
+    
     switch(gauge_action_name)
       {
       case WILSON_GAUGE_ACTION:if(!Wilson_sweeper->staples_inited) init_Wilson_sweeper();break;
-      case TLSYM_GAUGE_ACTION:if(!tlSym_sweeper->staples_inited) init_tlSym_sweeper();break;
+      case TLSYM_GAUGE_ACTION:
+      case IWASAKI_GAUGE_ACTION:
+	if(!Symanzik_sweeper->staples_inited) init_Symanzik_sweeper();break;
       case UNSPEC_GAUGE_ACTION:crash("unspecified action");break;
       default: crash("not implemented action");break;
       }

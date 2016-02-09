@@ -2,13 +2,16 @@
  #include "config.hpp"
 #endif
 
-#include "base/global_variables.hpp"
-#include "communicate/communicate.hpp"
+#include "base/random.hpp"
+#include "base/vectors.hpp"
+#include "communicate/borders.hpp"
 #include "geometry/geometry_eo.hpp"
 #include "hmc/backfield.hpp"
 #include "inverters/staggered/cg_invert_stD.hpp"
 #include "linalgs/linalgs.hpp"
 #include "new_types/su3.hpp"
+
+#include "putpourri.hpp"
 
 #include "stag.hpp"
 
@@ -17,7 +20,7 @@
 #endif
 
 namespace nissa
-{  
+{
   //holds the putpourri in a clean way
   struct fermionic_putpourri_t
   {
@@ -39,7 +42,7 @@ namespace nissa
     }
     fermionic_putpourri_t() {reset();}
   };
-      
+  
   //compute the fermionic putpourri for a single conf and hit
   THREADABLE_FUNCTION_6ARG(fermionic_putpourri, fermionic_putpourri_t*,putpourri, quad_su3**,conf, quad_u1**,u1b, quark_content_t*,quark, double,residue, int,comp_susc)
   {
@@ -61,8 +64,7 @@ namespace nissa
     //generate the source
     generate_fully_undiluted_eo_source(rnd,RND_GAUSS,-1);
     
-    //we add stagphases and backfield externally because we need them for derivative
-    addrem_stagphases_to_eo_conf(conf);
+    //we add backfield externally because we need them for derivative
     add_backfield_to_conf(conf,u1b);
     
     //invert
@@ -90,7 +92,7 @@ namespace nissa
 	vector_reset(point_result); //reset the point result
 	for(int par=0;par<2;par++) //loop on parity of sites
 	  NISSA_PARALLEL_LOOP(ieo,0,loc_volh) //loop on sites
-	    for(int ic=0;ic<3;ic++) //for every color takes the trace with conjugate of original source
+	    for(int ic=0;ic<NCOL;ic++) //for every color takes the trace with conjugate of original source
 	      complex_summ_the_conj1_prod(point_result[loclx_of_loceo[par][ieo]],rnd[par][ieo][ic],chi[par][ieo][ic]);
 	THREAD_BARRIER();
 	
@@ -130,7 +132,7 @@ namespace nissa
     ///////////////////// energy, barionic and pressure density ////////////////
     //compute forward derivative and backward, in turn
     //take into account that backward one must be conjugated
-    complex res_fw_bw[4][2];
+    complex res_fw_bw[NDIM][2];
     for(int mu=0;mu<4;mu++)
       compute_fw_bw_der_mel(res_fw_bw[mu],rnd,conf,mu,chi1,point_result);
     
@@ -153,9 +155,9 @@ namespace nissa
       }
     THREAD_BARRIER();
     
-    //if needed compute the quark number susceptivity
+    //if needed compute the quark number susceptibility
     if(comp_susc)
-      { //adimensional, need to be summed to the energy density! 
+      { //adimensional, need to be summed to the energy density!
 	complex res_quark_dens_susc_fw_bw[2];
 	compute_fw_bw_der_mel(res_quark_dens_susc_fw_bw,rnd,conf,0,chi2,point_result);
 	if(IS_MASTER_THREAD)
@@ -168,7 +170,6 @@ namespace nissa
     
     //remove stag phases and u1 field, and automatically barrier before collapsing
     rem_backfield_from_conf(conf,u1b);
-    addrem_stagphases_to_eo_conf(conf);
     
     //free automatic synchronizing
     nissa_free(point_result);
@@ -186,32 +187,32 @@ namespace nissa
   THREADABLE_FUNCTION_END
   
   //measure the above fermionic putpourri
-  void measure_fermionic_putpourri(quad_su3 **conf,theory_pars_t &theory_pars,int iconf,int conf_created)
+  void measure_fermionic_putpourri(quad_su3 **conf,theory_pars_t &theory_pars,fermionic_putpourri_meas_pars_t &meas_pars,int iconf,int conf_created)
   {
-    FILE *file=open_file(theory_pars.fermionic_putpourri_meas_pars.path,conf_created?"w":"a");
-    int comp_susc=theory_pars.fermionic_putpourri_meas_pars.compute_susceptivities;
+    FILE *file=open_file(meas_pars.path,conf_created?"w":"a");
+    int comp_susc=meas_pars.compute_susc;
     
     //measure the putpourri for each quark
-    int ncopies=theory_pars.fermionic_putpourri_meas_pars.ncopies;
+    int ncopies=meas_pars.ncopies;
     for(int icopy=0;icopy<ncopies;icopy++)
       {
-	master_fprintf(file,"%d",iconf);    
-	for(int iflav=0;iflav<theory_pars.nflavs;iflav++)
+	master_fprintf(file,"%d",iconf);
+	for(int iflav=0;iflav<theory_pars.nflavs();iflav++)
 	  {
+	    if(!theory_pars.quarks[iflav].is_stag) crash("not defined for non-staggered quarks");
+	    
 	    fermionic_putpourri_t putpourri;
 	    
 	    //loop over hits
-	    int nhits=theory_pars.fermionic_putpourri_meas_pars.nhits;
+	    int nhits=meas_pars.nhits;
 	    for(int hit=0;hit<nhits;hit++)
 	      {
 		verbosity_lv2_master_printf("Evaluating fermionic putpourri for flavor %d/%d, ncopy %d/%d, nhits %d/%d\n",
-					    iflav+1,theory_pars.nflavs,icopy+1,ncopies,hit+1,nhits);
+					    iflav+1,theory_pars.nflavs(),icopy+1,ncopies,hit+1,nhits);
 		
 		//compute and summ
 		fermionic_putpourri_t temp;
-		fermionic_putpourri(&temp,conf,theory_pars.backfield[iflav],theory_pars.quark_content+iflav,
-				    theory_pars.fermionic_putpourri_meas_pars.residue,
-				    comp_susc);
+		fermionic_putpourri(&temp,conf,theory_pars.backfield[iflav],&theory_pars.quarks[iflav],meas_pars.residue,comp_susc);
 		complex_summassign(putpourri.chiral_cond,temp.chiral_cond);
 		if(comp_susc) complex_summassign(putpourri.chiral_cond_susc,temp.chiral_cond_susc);
 		complex_summassign(putpourri.energy_dens,temp.energy_dens);
@@ -237,5 +238,17 @@ namespace nissa
     
     //close the file
     if(rank==0) fclose(file);
+  }
+  
+  //fermionic putpourri
+  std::string fermionic_putpourri_meas_pars_t::get_str(bool full)
+  {
+    std::ostringstream os;
+    
+    os<<"MeasPutpourri\n";
+    if(is_nonstandard()||full) os<<base_fermionic_meas_t::get_str(full);
+    if(compute_susc!=def_compute_susc()||full)  os<<" ComputeSusc\t=\t"<<compute_susc<<"\n";
+    
+    return os.str();
   }
 }

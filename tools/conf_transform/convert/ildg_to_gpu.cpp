@@ -1,5 +1,7 @@
 #include "nissa.hpp"
 
+#include "gpu_stagphase.hpp"
+
 #include <math.h>
 
 using namespace nissa;
@@ -25,21 +27,21 @@ int main(int narg,char **arg)
   init_nissa(narg,arg);
   
   if(narg<5) crash("use: %s L T file_in file_out",arg[0]);
-
+  
   L=atoi(arg[1]);
   T=atoi(arg[2]);
-
-  //Init the MPI grid 
+  
+  //Init the MPI grid
   init_grid(T,L);
-
+  
   //////////////////////////// read the conf /////////////////////////////
-
+  
   quad_su3 *in_conf=nissa_malloc("in_conf",loc_vol,quad_su3);
   
   //print the plaquette and write the conf
   read_ildg_gauge_conf(in_conf,arg[3]);
   master_printf("Global plaquette: %16.16lg\n",global_plaquette_lx_conf(in_conf));
-
+  
   //////////////////////////// convert the conf //////////////////////////
   
   su3 *out_conf=nissa_malloc("out_conf",4*loc_vol,su3);

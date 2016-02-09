@@ -1,7 +1,9 @@
 #ifndef _LINALGS_HPP
 #define _LINALGS_HPP
 
-#include "new_types/new_types_definitions.hpp"
+#include "new_types/dirac.hpp"
+#include "new_types/float_128.hpp"
+#include "new_types/su3.hpp"
 
 namespace nissa
 {
@@ -10,6 +12,8 @@ namespace nissa
   void single_vector_copy(float *a,float *b,int n);
   void double_conv_quadruple_vector_glb_scalar_prod(double *out,float_128 *a,float_128 *b,int n);
   void double_vector_glb_scalar_prod(double *res,double *a,double *b,int n);
+  template <class T> double double_vector_norm2(T *v,int n_per_class)
+  {double res;double_vector_glb_scalar_prod(&res,(double*)v,(double*)v,n_per_class*sizeof(T)/sizeof(double));return res;}
   void single_vector_glb_scalar_prod(float *res,float *a,float *b,int n);
   void double_vector_glb_collapse(double *res,double *a,int n);
   void double_vector_copy(double *a,double *b,int n);
@@ -29,9 +33,11 @@ namespace nissa
   void single_vector_summ_single_vector_prod_single(float *a,float *b,float *c,float d,int n,int OPT=0);
   void get_color_from_colorspinspin(color *out,colorspinspin *in,int id1,int id2);
   void get_color_from_spincolor(color *out,spincolor *in,int id);
+  void get_color_from_su3(color **out,su3 **in,int ic);
   void get_spincolor_from_colorspinspin(spincolor *out,colorspinspin *in,int id);
   void get_spincolor_from_su3spinspin(spincolor *out,su3spinspin *in,int id,int ic);
   void parallel_memcpy(void *out,void *in,int n);
+  void put_color_into_su3(su3 **out,color **in,int ic);
   void put_color_into_colorspinspin(colorspinspin *out,color *in,int id1,int id2);
   void put_color_into_spincolor(spincolor *out,color *in,int id);
   void put_spincolor_into_colorspinspin(colorspinspin *out,spincolor *in,int id);

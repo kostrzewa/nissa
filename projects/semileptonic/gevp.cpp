@@ -170,7 +170,7 @@ void setup_conf()
   master_printf("plaq: %.18g\n",global_plaquette_lx_conf(conf));
 
   conf_smear_time-=take_time();
-  ape_spatial_smear_conf(sme_conf,conf,ape_smearing_pars.alpha,ape_smearing_pars.nlev);
+  ape_spatial_smear_conf(sme_conf,conf,ape_smearing_pars.alpha,ape_smearing_pars.nlevels);
   conf_smear_time+=take_time();
   
   master_printf("smeared plaq: %.16g\n",global_plaquette_lx_conf(sme_conf));
@@ -194,10 +194,8 @@ void close_semileptonic()
   master_printf("Total time: %g s, of which:\n",tot_prog_time);
   master_printf(" - %02.2f%s to perform %d inversions (%2.2gs avg)\n",inv_time/tot_prog_time*100,"%",
 		ninv_tot,inv_time/ninv_tot);
-#ifdef BENCH
   master_printf("  of which  %02.2f%s for %d cgm inversion overhead (%2.2gs avg)\n",cgm_inv_over_time/inv_time*100,"%",
                 ninv_tot,cgm_inv_over_time/ninv_tot);
-#endif
   master_printf(" - %02.2f%s to smear configuration\n",conf_smear_time*100.0/tot_prog_time,"%");
   master_printf(" - %02.2f%s to sink-smear propagators\n",smear_time*100.0/tot_prog_time,"%");
   master_printf(" - %02.2f%s to compute %d correlations (%2.2gs avg)\n",corr_time/tot_prog_time*100,"%",

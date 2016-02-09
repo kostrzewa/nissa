@@ -2,17 +2,25 @@
  #include "config.hpp"
 #endif
 
+#define EXTERN_GEOMETRY_VIR
+#include "geometry_vir.hpp"
+
 //for the moment we still call "bgq"
 #include "bgq/bgq_macros.hpp"
 
+#include "base/bench.hpp"
 #include "base/debug.hpp"
-#include "base/global_variables.hpp"
 #include "base/thread_macros.hpp"
 #include "base/vectors.hpp"
+#include "bgq/Wilson_hopping_matrix_lx_bgq.hpp"
+#include "communicate/borders.hpp"
 #include "communicate/communicate.hpp"
+#include "geometry/geometry_eo.hpp"
 #include "geometry/geometry_lx.hpp"
+#include "geometry/geometry_vir.hpp"
 #include "new_types/complex.hpp"
 #include "new_types/su3.hpp"
+#include "new_types/two_stage_computation.hpp"
 #include "operations/su3_paths/topological_charge.hpp"
 
 #ifdef USE_THREADS
@@ -81,7 +89,7 @@ namespace nissa
     virlx_of_loclx=nissa_malloc("virlx_of_loclx",loc_vol+bord_vol,int);
     vireo_of_loclx=nissa_malloc("vireo_of_loclx",loc_vol+bord_vol,int);
     loclx_of_virlx=nissa_malloc("loclx_of_virlx",(loc_vol+bord_vol)/NVNODES,int);
-    for(int par=0;par<2;par++) 
+    for(int par=0;par<2;par++)
       {
 	loclx_of_vireo[par]=nissa_malloc("loceo_of_virlx",(loc_vol+bord_vol)/NVNODES/2,int);
 	loceo_of_vireo[par]=nissa_malloc("loceo_of_vireo",(loc_vol+bord_vol)/NVNODES/2,int);
@@ -190,7 +198,7 @@ namespace nissa
 	//order will be:     bord_vol/NVNODES | 8*loc_vol/NVNODES | vbord_vol
 	int loc_data_start=bord_vol/NVNODES/fact;
 	int vbord_start=loc_data_start+8*loc_vol/NVNODES/fact;
-
+	
 	//note that this is in unity of the vparallelized structure, here assumed to be halfspincolor
 	size_t req_size=(vbord_start+vbord_vol/fact)*sizeof(bi_halfspincolor);
 	recv_buf_size=std::max(recv_buf_size,req_size);
@@ -313,26 +321,27 @@ namespace nissa
   THREADABLE_FUNCTION_2ARG(lx_conf_remap_to_virlx, bi_oct_su3*,out, quad_su3*,in)
   {
     GET_THREAD_ID();
+    START_TIMING(remap_time,nremap);
     
     //communicate conf border so we can accede it
     communicate_lx_quad_su3_borders(in);
     
     //scan the two virtual nodes
     NISSA_PARALLEL_LOOP(isrc_lx,0,loc_vol)
-      for(int mu=0;mu<4;mu++)
+      for(int mu=0;mu<NDIM;mu++)
 	{
 	  //catch links needed to scatter signal forward
-	  SU3_TO_BI_SU3(out[virlx_of_loclx[isrc_lx]][4+mu],in[isrc_lx][mu],vnode_of_loclx(isrc_lx));
+	  SU3_TO_BI_SU3(out[virlx_of_loclx[isrc_lx]][NDIM+mu],in[isrc_lx][mu],vnode_of_loclx(isrc_lx));
 	  
-	  //copy links also where they are needed to scatter the signal backward, if 
-	  //sites that need them are not in the border (that would mean that computation must be 
+	  //copy links also where they are needed to scatter the signal backward, if
+	  //sites that need them are not in the border (that would mean that computation must be
 	  //done in another node
 	  int idst_lx=loclx_neighup[isrc_lx][mu];
 	  if(idst_lx<loc_vol) SU3_TO_BI_SU3(out[virlx_of_loclx[idst_lx]][mu],in[isrc_lx][mu],vnode_of_loclx(idst_lx));
 	}
     
-    //scan the backward borders (first half of lx border) to finish catching links needed to scatter signal backward 
-    for(int mu=0;mu<4;mu++) //border and link direction
+    //scan the backward borders (first half of lx border) to finish catching links needed to scatter signal backward
+    for(int mu=0;mu<NDIM;mu++) //border and link direction
       if(paral_dir[mu])
 	NISSA_PARALLEL_LOOP(ibord,loc_vol+bord_offset[mu],loc_vol+bord_offset[mu]+bord_dir_vol[mu])
 	  {
@@ -344,12 +353,56 @@ namespace nissa
 	  }
     
     set_borders_invalid(out);
+    STOP_TIMING(remap_time);
   }
   THREADABLE_FUNCTION_END
-
+  
+  /*
+    similar, but the various links are in different blocks
+  */
+  THREADABLE_FUNCTION_2ARG(lx_conf_remap_to_virlx_blocked, bi_su3*,out, quad_su3*,in)
+  {
+    GET_THREAD_ID();
+    START_TIMING(remap_time,nremap);
+    
+    //communicate conf border so we can accede it
+    communicate_lx_quad_su3_borders(in);
+    
+    //scan the two virtual nodes
+    NISSA_PARALLEL_LOOP(isrc_lx,0,loc_vol)
+      for(int mu=0;mu<NDIM;mu++)
+	{
+	  //catch links needed to scatter signal forward
+	  SU3_TO_BI_SU3(out[(NDIM+mu)*loc_vol/NVNODES+virlx_of_loclx[isrc_lx]],in[isrc_lx][mu],vnode_of_loclx(isrc_lx));
+	  
+	  //copy links also where they are needed to scatter the signal backward, if
+	  //sites that need them are not in the border (that would mean that computation must be
+	  //done in another node
+	  int idst_lx=loclx_neighup[isrc_lx][mu];
+	  if(idst_lx<loc_vol) SU3_TO_BI_SU3_DAG(out[mu*loc_vol/NVNODES+virlx_of_loclx[idst_lx]],in[isrc_lx][mu],vnode_of_loclx(idst_lx));
+	}
+    
+    //scan the backward borders (first half of lx border) to finish catching links needed to scatter signal backward
+    for(int mu=0;mu<NDIM;mu++) //border and link direction
+      if(paral_dir[mu])
+	NISSA_PARALLEL_LOOP(ibord,loc_vol+bord_offset[mu],loc_vol+bord_offset[mu]+bord_dir_vol[mu])
+	  {
+	    int idst_lx=loclx_neighup[ibord][mu];
+	    int vn_dst_virlx=vnode_of_loclx(idst_lx);
+	    int idst_virlx=mu*loc_vol/NVNODES+virlx_of_loclx[idst_lx];
+	    
+	    SU3_TO_BI_SU3_DAG(out[idst_virlx],in[ibord][mu],vn_dst_virlx);
+	  }
+    
+    set_borders_invalid(out);
+    STOP_TIMING(remap_time);
+  }
+  THREADABLE_FUNCTION_END
+  
   THREADABLE_FUNCTION_2ARG(virlx_conf_remap_to_lx, quad_su3*,ext_out, bi_oct_su3*,in)
   {
     GET_THREAD_ID();
+    START_TIMING(remap_time,nremap);
     
     //buffer if needed
     int bufferize=((void*)ext_out==(void*)in);
@@ -357,7 +410,7 @@ namespace nissa
     
     //split to the two VN
     NISSA_PARALLEL_LOOP(ivol_virlx,0,loc_vol/NVNODES)
-      for(int mu=0;mu<4;mu++)
+      for(int mu=0;mu<NDIM;mu++)
 	BI_SU3_TO_SU3(out[loclx_of_virlx[ivol_virlx]][mu],out[loclx_of_virlx[ivol_virlx]+vnode_lx_offset][mu],
 		      in[ivol_virlx][4+mu]);
     
@@ -370,13 +423,15 @@ namespace nissa
 	vector_copy(ext_out,out);
 	nissa_free(out);
       }
+    STOP_TIMING(remap_time);
   }
   THREADABLE_FUNCTION_END
-
+  
   //similar for eo
   THREADABLE_FUNCTION_2ARG(lx_conf_remap_to_vireo, bi_oct_su3**,out, quad_su3*,in)
   {
     GET_THREAD_ID();
+    START_TIMING(remap_time,nremap);
     
     //communicate conf border so we can accede it
     communicate_lx_quad_su3_borders(in);
@@ -405,13 +460,15 @@ namespace nissa
 	  }
     
     for(int eo=0;eo<2;eo++) set_borders_invalid(out[eo]);
+    STOP_TIMING(remap_time);
   }
   THREADABLE_FUNCTION_END
-
+  
   //similar for eo
   THREADABLE_FUNCTION_2ARG(lx_conf_remap_to_single_vireo, bi_single_oct_su3**,out, quad_su3*,in)
   {
     GET_THREAD_ID();
+    START_TIMING(remap_time,nremap);
     
     //communicate conf border so we can accede it
     communicate_lx_quad_su3_borders(in);
@@ -423,14 +480,14 @@ namespace nissa
 	  //catch links needed to scatter signal forward
 	  SU3_TO_BI_SINGLE_SU3(out[loclx_parity[isrc_lx]][vireo_of_loclx[isrc_lx]][4+mu],in[isrc_lx][mu],vnode_of_loclx(isrc_lx));
 	  
-	  //copy links also where they are needed to scatter the signal backward, if 
-	  //sites that need them are not in the border (that would mean that computation must be 
+	  //copy links also where they are needed to scatter the signal backward, if
+	  //sites that need them are not in the border (that would mean that computation must be
 	  //done in another node)
 	  int idst_lx=loclx_neighup[isrc_lx][mu],vn=vnode_of_loclx(idst_lx);
 	  if(idst_lx<loc_vol) SU3_TO_BI_SINGLE_SU3(out[loclx_parity[idst_lx]][vireo_of_loclx[idst_lx]][mu],in[isrc_lx][mu],vn);
 	}
     
-    //scan the backward borders (first half of lx border) to finish catching links needed to scatter signal backward 
+    //scan the backward borders (first half of lx border) to finish catching links needed to scatter signal backward
     for(int mu=0;mu<4;mu++) //border and link direction
       if(paral_dir[mu])
 	NISSA_PARALLEL_LOOP(ibord,loc_vol+bord_offset[mu],loc_vol+bord_offset[mu]+bord_dir_vol[mu])
@@ -440,13 +497,15 @@ namespace nissa
 	  }
     
     for(int eo=0;eo<2;eo++) set_borders_invalid(out[eo]);
+    STOP_TIMING(remap_time);
   }
   THREADABLE_FUNCTION_END
-
+  
   //similar for evn or odd
   THREADABLE_FUNCTION_2ARG(eo_conf_remap_to_vireo, bi_oct_su3**,out, quad_su3**,in)
   {
     GET_THREAD_ID();
+    START_TIMING(remap_time,nremap);
     
     //communicate conf border so we can accede it
     communicate_ev_and_od_quad_su3_borders(in);
@@ -460,16 +519,15 @@ namespace nissa
 	    int vn=vnode_of_loceo(par,isrc_eo);
 	    SU3_TO_BI_SU3(out[par][vireo_of_loceo[par][isrc_eo]][4+mu],in[par][isrc_eo][mu],vn);
 	    
-	    //copy links also where they are needed to scatter the signal backward, if 
-	    //sites that need them are not in the border (that would mean that computation must be 
+	    //copy links also where they are needed to scatter the signal backward, if
+	    //sites that need them are not in the border (that would mean that computation must be
 	    //done in another node)
 	    int idst_eo=loceo_neighup[par][isrc_eo][mu];
 	    vn=vnode_of_loceo(!par,idst_eo);
 	    if(idst_eo<loc_volh) SU3_TO_BI_SU3(out[!par][vireo_of_loceo[!par][idst_eo]][mu],in[par][isrc_eo][mu],vn);
 	  }
-
-    
-    //scan the backward borders (first half of lx border) to finish catching links needed to scatter signal backward 
+        
+    //scan the backward borders (first half of lx border) to finish catching links needed to scatter signal backward
     for(int par=0;par<2;par++)
       for(int mu=0;mu<4;mu++) //border and link direction
 	if(paral_dir[mu])
@@ -481,13 +539,15 @@ namespace nissa
     
     set_borders_invalid(out[EVN]);
     set_borders_invalid(out[ODD]);
+    STOP_TIMING(remap_time);
   }
   THREADABLE_FUNCTION_END
-
+  
   //similar for evn or odd
   THREADABLE_FUNCTION_2ARG(eo_conf_remap_to_single_vireo, bi_single_oct_su3**,out, quad_su3**,in)
   {
     GET_THREAD_ID();
+    START_TIMING(remap_time,nremap);
     
     //communicate conf border so we can accede it
     communicate_ev_and_od_quad_su3_borders(in);
@@ -501,17 +561,16 @@ namespace nissa
 	    int vn=vnode_of_loceo(par,isrc_eo);
 	    SU3_TO_BI_SINGLE_SU3(out[par][vireo_of_loceo[par][isrc_eo]][4+mu],in[par][isrc_eo][mu],vn);
 	    
-	    //copy links also where they are needed to scatter the signal backward, if 
-	    //sites that need them are not in the border (that would mean that computation must be 
+	    //copy links also where they are needed to scatter the signal backward, if
+	    //sites that need them are not in the border (that would mean that computation must be
 	    //done in another node)
 	    int idst_eo=loceo_neighup[par][isrc_eo][mu];
 	    vn=vnode_of_loceo(!par,idst_eo);
 	    if(idst_eo<loc_volh) SU3_TO_BI_SINGLE_SU3(out[!par][vireo_of_loceo[!par][idst_eo]][mu],
 						      in[par][isrc_eo][mu],vn);
 	  }
-
     
-    //scan the backward borders (first half of lx border) to finish catching links needed to scatter signal backward 
+    //scan the backward borders (first half of lx border) to finish catching links needed to scatter signal backward
     for(int par=0;par<2;par++)
       for(int mu=0;mu<4;mu++) //border and link direction
 	if(paral_dir[mu])
@@ -523,14 +582,16 @@ namespace nissa
     
     set_borders_invalid(out[EVN]);
     set_borders_invalid(out[ODD]);
+    STOP_TIMING(remap_time);
   }
   THREADABLE_FUNCTION_END
-
+  
   //remap a spincolor from lx to virlx layout
   THREADABLE_FUNCTION_2ARG(lx_spincolor_remap_to_virlx, bi_spincolor*,ext_out, spincolor*,in)
   {
     GET_THREAD_ID();
-  
+    START_TIMING(remap_time,nremap);
+    
     //bufferize if needed
     int bufferize=(void*)ext_out==(void*)in;
     bi_spincolor *out=bufferize?nissa_malloc("out",loc_vol/NVNODES,bi_spincolor):ext_out;
@@ -548,13 +609,15 @@ namespace nissa
 	vector_copy(ext_out,out);
 	nissa_free(out);
       }
+    STOP_TIMING(remap_time);
   }
   THREADABLE_FUNCTION_END
   //reverse
   THREADABLE_FUNCTION_2ARG(virlx_spincolor_remap_to_lx, spincolor*,ext_out, bi_spincolor*,in)
   {
     GET_THREAD_ID();
-  
+    START_TIMING(remap_time,nremap);
+    
     //buffer if needed
     int bufferize=(void*)ext_out==(void*)in;
     spincolor *out=bufferize?nissa_malloc("out",loc_vol,spincolor):ext_out;
@@ -573,6 +636,7 @@ namespace nissa
 	vector_copy(ext_out,out);
 	nissa_free(out);
       }
+    STOP_TIMING(remap_time);
   }
   THREADABLE_FUNCTION_END
   
@@ -580,19 +644,22 @@ namespace nissa
   THREADABLE_FUNCTION_3ARG(evn_or_odd_spincolor_remap_to_virevn_or_odd, bi_spincolor*,out, spincolor*,in, int,par)
   {
     GET_THREAD_ID();
+    START_TIMING(remap_time,nremap);
     
     //split to the two VN
     NISSA_PARALLEL_LOOP(ivol_eo,0,loc_volh)
       SPINCOLOR_TO_BI_SPINCOLOR(out[vireo_of_loceo[par][ivol_eo]],in[ivol_eo],vnode_of_loceo(EVN,ivol_eo));
     
     //wait filling
-    set_borders_invalid(out);  
+    set_borders_invalid(out);
+    STOP_TIMING(remap_time);
   }
   THREADABLE_FUNCTION_END
   //reverse
   THREADABLE_FUNCTION_3ARG(virevn_or_odd_spincolor_remap_to_evn_or_odd, spincolor*,out, bi_spincolor*,in, int,par)
   {
     GET_THREAD_ID();
+    START_TIMING(remap_time,nremap);
     
     //split to the two VN
     NISSA_PARALLEL_LOOP(ivol_vireo,0,loc_volh/NVNODES)
@@ -601,14 +668,16 @@ namespace nissa
     
     //wait filling
     set_borders_invalid(out);
+    STOP_TIMING(remap_time);
   }
   THREADABLE_FUNCTION_END
-
+  
   //remap a spincolor_128 from lx to virlx layout
   THREADABLE_FUNCTION_2ARG(lx_spincolor_128_remap_to_virlx, bi_spincolor_128*,ext_out, spincolor_128*,in)
   {
     GET_THREAD_ID();
-  
+    START_TIMING(remap_time,nremap);
+    
     //bufferize if needed
     int bufferize=(void*)ext_out==(void*)in;
     bi_spincolor_128 *out=bufferize?nissa_malloc("out",loc_vol/NVNODES,bi_spincolor_128):ext_out;
@@ -626,13 +695,15 @@ namespace nissa
 	vector_copy(ext_out,out);
 	nissa_free(out);
       }
+    STOP_TIMING(remap_time);
   }
   THREADABLE_FUNCTION_END
   //reverse
   THREADABLE_FUNCTION_2ARG(virlx_spincolor_128_remap_to_lx, spincolor_128*,ext_out, bi_spincolor_128*,in)
   {
     GET_THREAD_ID();
-  
+    START_TIMING(remap_time,nremap);
+    
     //buffer if needed
     int bufferize=(void*)ext_out==(void*)in;
     spincolor_128 *out=bufferize?nissa_malloc("out",loc_vol,spincolor_128):ext_out;
@@ -651,14 +722,16 @@ namespace nissa
 	vector_copy(ext_out,out);
 	nissa_free(out);
       }
+    STOP_TIMING(remap_time);
   }
   THREADABLE_FUNCTION_END
-
+  
   //remap a spincolor from lx to vireo layout
   THREADABLE_FUNCTION_2ARG(lx_spincolor_remap_to_vireo, bi_spincolor**,out, spincolor*,in)
   {
     GET_THREAD_ID();
-  
+    START_TIMING(remap_time,nremap);
+    
     //copy the various VN
     NISSA_PARALLEL_LOOP(ivol_lx,0,loc_vol)
       SPINCOLOR_TO_BI_SPINCOLOR(out[loclx_parity[ivol_lx]][vireo_of_loclx[ivol_lx]],in[ivol_lx],vnode_of_loclx(ivol_lx));
@@ -666,12 +739,14 @@ namespace nissa
     //wait filling
     set_borders_invalid(out[EVN]);
     set_borders_invalid(out[ODD]);
+    STOP_TIMING(remap_time);
   }
   THREADABLE_FUNCTION_END
- //reverse
+  //reverse
   THREADABLE_FUNCTION_2ARG(vireo_spincolor_remap_to_lx, spincolor*,out, bi_spincolor**,in)
   {
     GET_THREAD_ID();
+    START_TIMING(remap_time,nremap);
     
     //split to the two VN
     for(int par=0;par<2;par++)
@@ -682,6 +757,7 @@ namespace nissa
     
     //wait filling
     set_borders_invalid(out);
+    STOP_TIMING(remap_time);
   }
   THREADABLE_FUNCTION_END
   
@@ -689,6 +765,7 @@ namespace nissa
   THREADABLE_FUNCTION_2ARG(lx_color_remap_to_vireo, bi_color**,out, color*,in)
   {
     GET_THREAD_ID();
+    START_TIMING(remap_time,nremap);
     
     //copy the various VN
     NISSA_PARALLEL_LOOP(ivol_lx,0,loc_vol)
@@ -697,12 +774,14 @@ namespace nissa
     //wait filling
     set_borders_invalid(out[EVN]);
     set_borders_invalid(out[ODD]);
+    STOP_TIMING(remap_time);
   }
   THREADABLE_FUNCTION_END
   //single
   THREADABLE_FUNCTION_2ARG(lx_color_remap_to_single_vireo, bi_single_color**,out, color*,in)
   {
     GET_THREAD_ID();
+    START_TIMING(remap_time,nremap);
     
     //copy the various VN
     NISSA_PARALLEL_LOOP(ivol_lx,0,loc_vol)
@@ -711,12 +790,14 @@ namespace nissa
     //wait filling
     set_borders_invalid(out[EVN]);
     set_borders_invalid(out[ODD]);
+    STOP_TIMING(remap_time);
   }
   THREADABLE_FUNCTION_END
   //reverse
   THREADABLE_FUNCTION_2ARG(vireo_color_remap_to_lx, color*,out, bi_color**,in)
   {
     GET_THREAD_ID();
+    START_TIMING(remap_time,nremap);
     
     //split to the two VN
     for(int par=0;par<2;par++)
@@ -726,26 +807,30 @@ namespace nissa
     
     //wait filling
     set_borders_invalid(out);
+    STOP_TIMING(remap_time);
   }
   THREADABLE_FUNCTION_END
-
+  
   //only even or odd
   THREADABLE_FUNCTION_3ARG(evn_or_odd_color_remap_to_virevn_or_odd, bi_color*,out, color*,in, int,par)
   {
     GET_THREAD_ID();
+    START_TIMING(remap_time,nremap);
     
     //split to the two VN
     NISSA_PARALLEL_LOOP(ivol_eo,0,loc_volh)
       COLOR_TO_BI_COLOR(out[vireo_of_loceo[par][ivol_eo]],in[ivol_eo],vnode_of_loceo(EVN,ivol_eo));
     
     //wait filling
-    set_borders_invalid(out);  
+    set_borders_invalid(out);
+    STOP_TIMING(remap_time);
   }
   THREADABLE_FUNCTION_END
   //reverse
   THREADABLE_FUNCTION_3ARG(virevn_or_odd_color_remap_to_evn_or_odd, color*,out, bi_color*,in, int,par)
   {
     GET_THREAD_ID();
+    START_TIMING(remap_time,nremap);
     
     //split to the two VN
     NISSA_PARALLEL_LOOP(ivol_vireo,0,loc_volh/NVNODES)
@@ -754,26 +839,30 @@ namespace nissa
     
     //wait filling
     set_borders_invalid(out);
+    STOP_TIMING(remap_time);
   }
   THREADABLE_FUNCTION_END
-
+  
   //only even or odd, single dest
   THREADABLE_FUNCTION_3ARG(evn_or_odd_color_remap_to_single_virevn_or_odd, bi_single_color*,out, color*,in, int,par)
   {
     GET_THREAD_ID();
+    START_TIMING(remap_time,nremap);
     
     //split to the two VN
     NISSA_PARALLEL_LOOP(ivol_eo,0,loc_volh)
       COLOR_TO_BI_SINGLE_COLOR(out[vireo_of_loceo[par][ivol_eo]],in[ivol_eo],vnode_of_loceo(EVN,ivol_eo));
     
     //wait filling
-    set_borders_invalid(out);  
+    set_borders_invalid(out);
+    STOP_TIMING(remap_time);
   }
   THREADABLE_FUNCTION_END
   //reverse
   THREADABLE_FUNCTION_3ARG(virevn_or_odd_single_color_remap_to_evn_or_odd, color*,out, bi_single_color*,in, int,par)
   {
     GET_THREAD_ID();
+    START_TIMING(remap_time,nremap);
     
     //split to the two VN
     NISSA_PARALLEL_LOOP(ivol_vireo,0,loc_volh/NVNODES)
@@ -782,6 +871,7 @@ namespace nissa
     
     //wait filling
     set_borders_invalid(out);
+    STOP_TIMING(remap_time);
   }
   THREADABLE_FUNCTION_END
   
@@ -789,6 +879,7 @@ namespace nissa
   THREADABLE_FUNCTION_3ARG(lx_as2t_su3_remap_to_opt_virlx, bi_opt_as2t_su3*,bi_cl, double,csw, as2t_su3*,Pmunu)
   {
     GET_THREAD_ID();
+    START_TIMING(remap_time,nremap);
     
     NISSA_PARALLEL_LOOP(ivol_lx,0,loc_vol)
       {
@@ -801,24 +892,27 @@ namespace nissa
 	  }
       }
     set_borders_invalid(bi_cl);
+    STOP_TIMING(remap_time);
   }
   THREADABLE_FUNCTION_END
   //reverse
   THREADABLE_FUNCTION_2ARG(virlx_opt_as2t_su3_remap_to_lx, opt_as2t_su3*,out, bi_opt_as2t_su3*,in)
   {
     GET_THREAD_ID();
+    START_TIMING(remap_time,nremap);
     
     //split to the two VN
     NISSA_PARALLEL_LOOP(ivol_virlx,0,loc_vol/NVNODES)
-      for(int mu=0;mu<4;mu++)
+      for(int mu=0;mu<NDIM;mu++)
 	BI_SU3_TO_SU3(out[loclx_of_virlx[ivol_virlx]][mu],out[loclx_of_virlx[ivol_virlx]+vnode_lx_offset][mu],
 		      in[ivol_virlx][mu]);
     
     //wait filling
     set_borders_invalid(out);
+    STOP_TIMING(remap_time);
   }
   THREADABLE_FUNCTION_END
-
+  
   //set virtual geometry
   void set_vir_geometry()
   {
@@ -841,7 +935,7 @@ namespace nissa
 	define_vir_hopping_matrix_output_pos();
       }
   }
-
+  
   //unset it
   void unset_vir_geometry()
   {

@@ -1,7 +1,7 @@
 #ifndef _MOMENTA_EVOLVE_HPP
 #define _MOMENTA_EVOLVE_HPP
 
-#include "new_types/new_types_definitions.hpp"
+#include "new_types/su3.hpp"
 
 namespace nissa
 {  

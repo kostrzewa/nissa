@@ -5,17 +5,16 @@
 #include <string.h>
 
 #include "base/debug.hpp"
-#include "base/global_variables.hpp"
 #include "base/vectors.hpp"
 #include "dirac_operators/tmQ/reconstruct_tm_doublet.hpp"
 #include "geometry/geometry_mix.hpp"
 #include "geometry/geometry_lx.hpp"
 #include "linalgs/linalgs.hpp"
-#include "new_types/new_types_definitions.hpp"
 #include "new_types/spin.hpp"
 #include "new_types/su3.hpp"
 #include "operations/gaugeconf.hpp"
 #include "operations/su3_paths/plaquette.hpp"
+#include "operations/gaugeconf.hpp"
 #include "routines/ios.hpp"
 
 #include "checksum.hpp"
@@ -48,7 +47,7 @@ namespace nissa
     //read the checksum
     checksum read_check={0,0};
     ILDG_File_read_checksum(read_check,file);
-        
+    
     //check precision
     int single_double_flag=-1;
     const char single_double_str[2][10]={"single","double"};
@@ -56,7 +55,7 @@ namespace nissa
     if(nbytes_per_site_read==nbytes_per_site_double) single_double_flag=1;
     if(single_double_flag==-1)
       crash("Opsss! The file contain %d bytes per site and it is supposed to contain: %d (single) or %d (double)",
-	    nbytes_per_site_read,nbytes_per_site_float,nbytes_per_site_double);    
+	    nbytes_per_site_read,nbytes_per_site_float,nbytes_per_site_double);
     verbosity_lv3_master_printf("Vector is stored in %s precision\n",single_double_str[single_double_flag]);
     
     //change endianess
@@ -84,15 +83,15 @@ namespace nissa
     
     //cast to double if needed
     if(single_double_flag==0) floats_to_doubles_same_endianness(out,(float*)out,loc_nreals_tot);
-
-    set_borders_invalid(out);    
+    
+    set_borders_invalid(out);
   }
   
   //read a gauge conf
-  void read_ildg_gauge_conf(quad_su3 *conf,const char *path,ILDG_message *mess)
+  void read_ildg_gauge_conf(quad_su3 *conf,std::string path,ILDG_message *mess)
   {
     //read
-    verbosity_lv1_master_printf("\nReading configuration from file: %s\n",path);
+    verbosity_lv1_master_printf("\nReading configuration from file: %s\n",path.c_str());
     read_real_vector(conf,path,"ildg-binary-data",mess);
     verbosity_lv2_master_printf("Configuration read!\n\n");
     
@@ -113,12 +112,12 @@ namespace nissa
   ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////
   
   //read an ildg conf and split it into e/o parts
-  void read_ildg_gauge_conf_and_split_into_eo_parts(quad_su3 **eo_conf,const char *path,ILDG_message *mess)
+  void read_ildg_gauge_conf_and_split_into_eo_parts(quad_su3 **eo_conf,std::string path,ILDG_message *mess)
   {
     //read the conf in lx and reorder it
     quad_su3 *lx_conf=nissa_malloc("temp_conf",loc_vol+bord_vol,quad_su3);
     read_ildg_gauge_conf(lx_conf,path,mess);
-    split_lx_conf_into_eo_parts(eo_conf,lx_conf);
+    split_lx_vector_into_eo_parts(eo_conf,lx_conf);
     nissa_free(lx_conf);
     
     verbosity_lv3_master_printf("Plaquette after e/o reordering: %16.16lg\n",global_plaquette_eo_conf(eo_conf));

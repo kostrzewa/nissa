@@ -10,44 +10,52 @@
 #include <dirent.h>
 
 #include "base/debug.hpp"
-#include "base/global_variables.hpp"
+#include "base/vectors.hpp"
+#include "communicate/communicate.hpp"
+#include "geometry/geometry_eo.hpp"
+#include "geometry/geometry_lx.hpp"
+#include "geometry/geometry_vir.hpp"
+#include "new_types/su3.hpp"
 #include "routines/ios.hpp"
+
+#define EXTERN_INPUT
+#include "input.hpp"
 
 namespace nissa
 {
   //touch a file
-  void file_touch(const char *path)
+  void file_touch(std::string path)
   {
     if(rank==0)
       {
-	FILE *f=fopen(path,"w");
+	FILE *f=fopen(path.c_str(),"w");
 	if(f!=NULL)
 	  {
-	    master_printf("File %s created\n",path);
+	    master_printf("File %s created\n",path.c_str());
 	    fclose(f);
 	  }
 	else
-	  crash("Unable to touch file: %s\n",path);
+	  crash("Unable to touch file: %s",path.c_str());
       }
   }
   
   //check if a file exists
-  int file_exists(const char *path)
+  int file_exists(std::string path)
   {
     int status=1;
     
     if(rank==0)
       {
-	FILE *f=fopen(path,"r");
+	FILE *f=fopen(path.c_str(),"r");
 	if(f!=NULL)
 	  {
-	    verbosity_lv3_master_printf("File '%s' exists!\n",path);
+	    verbosity_lv3_master_printf("File '%s' exists!\n",path.c_str());
 	    status=1;
 	    fclose(f);
 	  }
 	else
 	  {
-	    verbosity_lv3_master_printf("File '%s' do not exist!\n",path);
+	    verbosity_lv3_master_printf("File '%s' do not exist!\n",path.c_str());
 	    status=0;
 	  }
       }
@@ -59,21 +67,21 @@ namespace nissa
   }
   
   //return 0 if the dir do not exists, 1 if exists, -1 if exist but is not a directory
-  int dir_exists(char *path)
+  int dir_exists(std::string path)
   {
     int exists;
     
     if(rank==0)
       {
-	DIR *d=opendir(path);
+	DIR *d=opendir(path.c_str());
 	exists=(d!=NULL);
 	
 	if(exists)
 	  {
-	    verbosity_lv2_master_printf("Directory \"%s\" is present\n",path);
+	    verbosity_lv2_master_printf("Directory \"%s\" is present\n",path.c_str());
 	    closedir(d);
 	  }
-	else verbosity_lv2_master_printf("Directory \"%s\" is not present\n",path);
+	else verbosity_lv2_master_printf("Directory \"%s\" is not present\n",path.c_str());
       }
     
     MPI_Bcast(&exists,1,MPI_INT,0,MPI_COMM_WORLD);
@@ -82,14 +90,14 @@ namespace nissa
   }
   
   //open an input file
-  void open_input(const char *input_path)
+  void open_input(std::string input_path)
   {
     if(rank==0)
       {
-	input_global=fopen(input_path,"r");
-	if(input_global==NULL) crash("File '%s' not found",input_path);
+	input_global=fopen(input_path.c_str(),"r");
+	if(input_global==NULL) crash("File '%s' not found",input_path.c_str());
 	
-	verbosity_lv1_master_printf("File '%s' opened\n",input_path);
+	verbosity_lv1_master_printf("File '%s' opened\n",input_path.c_str());
       }	
   }
   
@@ -332,7 +340,11 @@ namespace nissa
     char path[1024]="nissa_config";
     
     const int navail_tag=11;
-    char tag_name[11][100]={
+#ifndef USE_VNODES
+    int vnode_paral_dir=0;
+#endif
+    
+    char tag_name[navail_tag][100]={
       "verbosity_lv",
       "use_128_bit_precision",
       "use_eo_geom",
@@ -344,7 +356,7 @@ namespace nissa
       "set_y_nranks",
       "set_z_nranks",
       "vnode_paral_dir"};
-    char *tag_addr[11]={
+    char *tag_addr[navail_tag]={
       (char*)&verbosity_lv,
       (char*)&use_128_bit_precision,
       (char*)&use_eo_geom,
@@ -356,8 +368,8 @@ namespace nissa
       (char*)(fix_nranks+2),
       (char*)(fix_nranks+3),
       (char*)(&vnode_paral_dir)};
-    char tag_type[11][3]={"%d","%d","%d","%d","%d","%d","%d","%d","%d","%d","%d"};
-    char tag_size[11]={4,4,4,4,4,4,4,4,4,4,4};
+    char tag_type[navail_tag][3]={"%d","%d","%d","%d","%d","%d","%d","%d","%d","%d","%d"};
+    char tag_size[navail_tag]={4,4,4,4,4,4,4,4,4,4,4};
     
     if(file_exists(path))
       {

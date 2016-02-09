@@ -12,12 +12,13 @@
 #include <stdlib.h>
 #include <unistd.h>
 
-#include "global_variables.hpp"
-#include "vectors.hpp"
-
 #include "base/thread_macros.hpp"
+#include "geometry/geometry_lx.hpp"
+#include "new_types/float_128.hpp"
 #include "routines/ios.hpp"
 #include "routines/mpi_routines.hpp"
+
+#include "vectors.hpp"
 
 namespace nissa
 {
@@ -27,7 +28,7 @@ namespace nissa
 #ifdef USE_MPI
     return MPI_Wtime();
 #else
-    return (double) clock()/CLOCKS_PER_SEC;
+    return (double)clock()/CLOCKS_PER_SEC;
 #endif
   }
   
@@ -95,17 +96,20 @@ namespace nissa
   //called when signal received
   void signal_handler(int sig)
   {
+    master_printf("maximal memory used: %ld\n",max_required_memory);
+    verbosity_lv=3;
     char name[100];
     switch(sig)
       {
       case SIGSEGV: sprintf(name,"segmentation violation");break;
       case SIGFPE: sprintf(name,"floating-point exception");break;
-      case SIGXCPU: sprintf(name,"cpu time limit exceeded");verbosity_lv=3;break;
+      case SIGXCPU: sprintf(name,"cpu time limit exceeded");break;
+      case SIGABRT: sprintf(name,"abort signal");break;
       default: sprintf(name,"unassociated");break;
       }
-    print_all_vect_content();
     print_backtrace_list();
-    if(sig!=SIGXCPU) crash("signal %d (%s) detected, exiting",sig,name);
+    print_all_vect_content();
+    crash("signal %d (%s) detected, exiting",sig,name);
   }
   
 #ifdef USE_MPI
