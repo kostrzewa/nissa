@@ -17,7 +17,13 @@
 #ifdef USE_DDALPHAAMG
  #include "base/DDalphaAMG_bridge.hpp"
 #endif
+#ifdef USE_QUDA
+ #include "base/quda_bridge.hpp"
+#endif
 #include "base/vectors.hpp"
+#ifdef USE_CUDA
+ #include "base/cuda.hpp"
+#endif
 
 //include bg/q specifics
 #ifdef BGQ
@@ -61,6 +67,15 @@
 #include "dirac_operators/tmclovQ2/dirac_operator_tmclovQ2.hpp"
 
 #include "eigenvalues/eigenvalues.hpp"
+
+#include "field/binder.hpp"
+#include "field/component.hpp"
+#include "field/features.hpp"
+#include "field/field.hpp"
+#include "field/physical_fields.hpp"
+#include "field/storage.hpp"
+#include "field/tensor.hpp"
+#include "field/transposer.hpp"
 
 #include "free_theory/cg_eoprec_twisted_free_operator.hpp"
 #include "free_theory/free_theory_types.hpp"

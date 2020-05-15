@@ -100,7 +100,7 @@ MPI enabled         : $enable_MPI"
 if test "$enable_MPI" == "yes"
 then
 	# Check if we have MPI
-	if test "$have_CXX_mpi" == "yes"
+	if test "$have_CXX_mpi" == "yes" -o "$enable_MPI_autosearch" != "yes"
 	then
 		CPPFLAGS="$MPI_CXXFLAGS $CPPFLAGS"
 		LIBS="$MPI_CXXLIBS $LIBS"
@@ -116,6 +116,11 @@ AX_OPENMP
 
 #cuda
 AX_CHECK_CUDA
+AM_CONDITIONAL([USE_CUDA],[test "$CXX" == "nvcc"])
+if test "$CXX" == "nvcc"
+then
+	AC_DEFINE([USE_CUDA],1,"Using CUDA")
+fi
 
 #threads
 AC_DEFINE([NO_THREADS],[0],["No thread parallelization used"])
@@ -149,8 +154,6 @@ case "$with_threads_type" in
      cuda)  if test "$have_cuda" != "no"
     	    then
 		THREADS_TYPE=CUDA_THREADS
-		CXX="nvcc"
-		CPPFLAGS="--expt-extended-lambda -x cu -Xcudafe --diag_suppress=extern_entity_treated_as_static $CPPFLAGS"
 		CUDA_MANAGED=__managed__
 		CUDA_HOST_AND_DEVICE="__host__ __device__"
 	    else
@@ -460,6 +463,11 @@ AC_DEFINE_UNQUOTED([NCOL],$ncol,[Number of colors])
 AC_MSG_RESULT([enabling number of colors... $ncol])
 SUMMARY_RESULT="$SUMMARY_RESULT
 Number of colors    : $ncol"
+
+if test "$with_threads_type" = "cuda"
+then
+	CPPFLAGS="-dc --expt-relaxed-constexpr --expt-extended-lambda -x cu $CPPFLAGS"
+fi
 
 #macros to concatenate
 AC_DEFINE([_CONCAT(X,Y)],[X##Y],[Internally concatenation])

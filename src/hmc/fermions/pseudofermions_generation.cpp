@@ -19,10 +19,10 @@
 namespace nissa
 {
   // Generate the pseudofermions in the root tm case
-  void generate_root_tm_clov_pseudo_fermion(spincolor *pf,quad_su3 **conf,quad_u1 **u1b,rat_approx_t *rat,double residue,quark_content_t q,spincolor *eta)
+  void generate_root_tm_clov_pseudo_fermion(spincolor *pf,eo_ptr<quad_su3> conf,eo_ptr<quad_u1> u1b,rat_approx_t *rat,double residue,quark_content_t q,spincolor *eta)
   {
     //allocate and compute clover term
-    clover_term_t *Cl[2]={NULL,NULL};
+    eo_ptr<clover_term_t> Cl={NULL,NULL};
     for(int eo=0;eo<2;eo++) Cl[eo]=nissa_malloc("Cl",loc_volh,clover_term_t);
     inv_clover_term_t *invCl_evn=nissa_malloc("invCl_evn",loc_volh,inv_clover_term_t);
     chromo_operator(Cl,conf);
@@ -47,7 +47,7 @@ namespace nissa
   }
   
   // Generate the psewudoferimions in the root stag case
-  void generate_root_stag_pseudo_fermion(color *pf,quad_su3 **conf,quad_u1 **u1b,rat_approx_t *rat,double residue,quark_content_t q,color *eta)
+  void generate_root_stag_pseudo_fermion(color *pf,eo_ptr<quad_su3> conf,eo_ptr<quad_u1> u1b,rat_approx_t *rat,double residue,quark_content_t q,color *eta)
   {
     add_backfield_with_stagphases_to_conf(conf,u1b);
     summ_src_and_all_inv_stD2ee_m2_cgm(pf,conf,rat,10000000,residue,eta);
@@ -55,7 +55,7 @@ namespace nissa
   }
   
   //generate pseudo-fermion using color vector generator
-  THREADABLE_FUNCTION_7ARG(generate_pseudo_fermion, double*,action, pseudofermion_t*,pf, quad_su3**,conf, quad_u1**,u1b, rat_approx_t*,rat, double,residue, quark_content_t,q)
+  THREADABLE_FUNCTION_7ARG(generate_pseudo_fermion, double*,action, pseudofermion_t*,pf, eo_ptr<quad_su3>,conf, eo_ptr<quad_u1>,u1b, rat_approx_t*,rat, double,residue, quark_content_t,q)
   {
     //generate the random field
     pseudofermion_t pf_hb_vec(q.discretiz);
@@ -79,7 +79,7 @@ namespace nissa
   THREADABLE_FUNCTION_END
   
   //gemerate all pseudofermions
-  double generate_pseudofermions(std::vector<std::vector<pseudofermion_t> > &pf,quad_su3 **conf,theory_pars_t &theory_pars,hmc_evol_pars_t &simul_pars,std::vector<rat_approx_t> &rat_appr)
+  double generate_pseudofermions(std::vector<std::vector<pseudofermion_t> > &pf,eo_ptr<quad_su3> conf,theory_pars_t &theory_pars,hmc_evol_pars_t &simul_pars,std::vector<rat_approx_t> &rat_appr)
   {
     //create pseudo-fermions and store action
     double pf_action=0;

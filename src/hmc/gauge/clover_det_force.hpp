@@ -8,7 +8,7 @@
 
 namespace nissa
 {
-  void clover_det_force(quad_su3 **F,std::vector<quark_content_t> quark_content,quad_su3 **eo_conf);
+  void clover_det_force(eo_ptr<quad_su3> F,std::vector<quark_content_t> quark_content,eo_ptr<quad_su3> eo_conf);
 }
 
 #endif

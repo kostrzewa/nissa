@@ -22,12 +22,12 @@
 namespace nissa
 {
   // Compute the action in the root tm case
-  double compute_root_tm_clov_action(quad_su3 **eo_conf,quad_u1 **u1b,rat_approx_t *rat,quark_content_t q,double residue,spincolor *pf)
+  double compute_root_tm_clov_action(eo_ptr<quad_su3> eo_conf,eo_ptr<quad_u1> u1b,rat_approx_t *rat,quark_content_t q,double residue,spincolor *pf)
   {
     spincolor *chi=nissa_malloc("chi",loc_volh+bord_volh,spincolor);
     
     //allocate or not clover term and inverse evn clover term
-    clover_term_t *Cl[2]={NULL,NULL};
+    eo_ptr<clover_term_t> Cl={NULL,NULL};
     for(int eo=0;eo<2;eo++) Cl[eo]=nissa_malloc("Cl",loc_volh,clover_term_t);
     inv_clover_term_t *invCl_evn=nissa_malloc("invCl_evn",loc_volh,inv_clover_term_t);
     chromo_operator(Cl,eo_conf);
@@ -57,7 +57,7 @@ namespace nissa
   }
   
   // Compute the action in the root staggered case
-  double compute_root_st_action(quad_su3 **eo_conf,quad_u1 **u1b,rat_approx_t *rat,double residue,color *pf)
+  double compute_root_st_action(eo_ptr<quad_su3> eo_conf,eo_ptr<quad_u1> u1b,rat_approx_t *rat,double residue,color *pf)
   {
     color *chi=nissa_malloc("chi",loc_volh,color);
     
@@ -74,7 +74,7 @@ namespace nissa
   }
   
   //compute quark action for a set of quark
-  THREADABLE_FUNCTION_7ARG(compute_quark_action, double*,glb_action, quad_su3**,eo_conf, std::vector<quad_u1**>,u1b, std::vector<std::vector<pseudofermion_t> >*,pf, std::vector<quark_content_t>,quark_content, hmc_evol_pars_t*,simul_pars, std::vector<rat_approx_t>*,rat_appr)
+  THREADABLE_FUNCTION_7ARG(compute_quark_action, double*,glb_action, eo_ptr<quad_su3>,eo_conf, std::vector<eo_ptr<quad_u1>>,u1b, std::vector<std::vector<pseudofermion_t> >*,pf, std::vector<quark_content_t>,quark_content, hmc_evol_pars_t*,simul_pars, std::vector<rat_approx_t>*,rat_appr)
   {
     int nfl=quark_content.size();
     double res=simul_pars->pf_action_residue;
@@ -116,7 +116,7 @@ namespace nissa
   THREADABLE_FUNCTION_END
   
   //Compute the total action of the rooted staggered e/o improved theory
-  THREADABLE_FUNCTION_9ARG(full_theory_action, double*,tot_action, quad_su3**,eo_conf, quad_su3**,sme_conf, quad_su3**,H, std::vector<std::vector<pseudofermion_t> > *,pf, theory_pars_t*,theory_pars, hmc_evol_pars_t*,simul_pars, std::vector<rat_approx_t>*,rat_appr, double,external_quark_action)
+  THREADABLE_FUNCTION_9ARG(full_theory_action, double*,tot_action, eo_ptr<quad_su3>,eo_conf, eo_ptr<quad_su3>,sme_conf, eo_ptr<quad_su3>,H, std::vector<std::vector<pseudofermion_t> > *,pf, theory_pars_t*,theory_pars, hmc_evol_pars_t*,simul_pars, std::vector<rat_approx_t>*,rat_appr, double,external_quark_action)
   {
     verbosity_lv1_master_printf("Computing action\n");
     

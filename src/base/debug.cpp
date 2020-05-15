@@ -12,6 +12,10 @@
 #include <stdlib.h>
 #include <unistd.h>
 
+#ifdef USE_CUDA
+ #include <cuda_runtime.h>
+#endif
+
 #include "geometry/geometry_lx.hpp"
 #include "new_types/float_128.hpp"
 #include "routines/ios.hpp"
@@ -137,20 +141,35 @@ namespace nissa
   //decript the MPI error
   void internal_decript_MPI_error(int line,const char *file,int rc,const char *templ,...)
   {
-    va_list ap;
-    va_start(ap,templ);
-    
-    if(rc!=MPI_SUCCESS && rank==0)
+    if(rc!=MPI_SUCCESS and rank==0)
       {
 	char err[1024];
 	int len=1024;
 	MPI_Error_string(rc,err,&len);
 	char mess[1024];
+	va_list ap;
+	va_start(ap,templ);
+	va_end(ap);
+	
 	vsprintf(mess,templ,ap);
-	internal_crash(line,file,"%s, raised error: %s",mess,err);
+	internal_crash(line,file,"%s, MPI raised error: %s",mess,err);
       }
-    
-    va_end(ap);
+  }
+#endif
+  
+#if USE_CUDA
+  void internal_decript_cuda_error(int line,const char *file,cudaError_t rc,const char *templ,...)
+  {
+    if(rc!=cudaSuccess and rank==0)
+      {
+	char mess[1024];
+	va_list ap;
+	va_start(ap,templ);
+	va_end(ap);
+	
+	vsprintf(mess,templ,ap);
+	internal_crash(line,file,"%s, cuda raised error: %s",mess,cudaGetErrorString(rc));
+      }
   }
 #endif
   

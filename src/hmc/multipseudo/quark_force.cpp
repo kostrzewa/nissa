@@ -10,14 +10,14 @@
 #include "linalgs/linalgs.hpp"
 #include "new_types/su3.hpp"
 #include "operations/smearing/stout.hpp"
-#include "operations/su3_paths/clover_term.cpp"
+#include "operations/su3_paths/clover_term.hpp"
 #include "routines/ios.hpp"
 #include "threads/threads.hpp"
 
 namespace nissa
 {
   //Finish the computation multiplying for the conf and taking TA
-  THREADABLE_FUNCTION_2ARG(compute_quark_force_finish_computation, quad_su3**,F, quad_su3**,conf)
+  THREADABLE_FUNCTION_2ARG(compute_quark_force_finish_computation, eo_ptr<quad_su3>,F, eo_ptr<quad_su3>,conf)
   {
     GET_THREAD_ID();
     
@@ -37,10 +37,10 @@ namespace nissa
   THREADABLE_FUNCTION_END
   
   //compute the quark force, without stouting reampping
-  THREADABLE_FUNCTION_6ARG(compute_quark_force_no_stout_remapping, quad_su3**,F, quad_su3**,conf, std::vector<std::vector<pseudofermion_t> >*,pf, theory_pars_t*,tp, std::vector<rat_approx_t>*,appr, double,residue)
+  THREADABLE_FUNCTION_6ARG(compute_quark_force_no_stout_remapping, eo_ptr<quad_su3>,F, eo_ptr<quad_su3>,conf, std::vector<std::vector<pseudofermion_t> >*,pf, theory_pars_t*,tp, std::vector<rat_approx_t>*,appr, double,residue)
   {
     //allocate or not clover term and inverse evn clover term
-    clover_term_t *Cl[2]={NULL,NULL};
+    eo_ptr<clover_term_t> Cl={NULL,NULL};
     inv_clover_term_t *invCl_evn=NULL;
     bool clover_to_be_computed=false;
     for(int iflav=0;iflav<tp->nflavs();iflav++) clover_to_be_computed|=ferm_discretiz::include_clover(tp->quarks[iflav].discretiz);
@@ -65,7 +65,7 @@ namespace nissa
 	    invert_twisted_clover_term(invCl_evn,q.mass,q.kappa,Cl[EVN]);
 	  }
 	
-	quad_u1 **bf=tp->backfield[iflav];
+	eo_ptr<quad_u1>& bf=tp->backfield[iflav];
 	rat_approx_t *app=&((*appr)[iflav*nappr_per_quark+RAT_APPR_QUARK_FORCE]);
 	
 	for(size_t ipf=0;ipf<(*pf)[iflav].size();ipf++)
@@ -97,7 +97,7 @@ namespace nissa
   THREADABLE_FUNCTION_END
   
   //take into account the stout remapping procedure
-  THREADABLE_FUNCTION_6ARG(compute_quark_force, quad_su3**,F, quad_su3**,conf, std::vector<std::vector<pseudofermion_t> >*,pf, theory_pars_t*,physics, std::vector<rat_approx_t>*,appr, double,residue)
+  THREADABLE_FUNCTION_6ARG(compute_quark_force, eo_ptr<quad_su3>,F, eo_ptr<quad_su3>,conf, std::vector<std::vector<pseudofermion_t> >*,pf, theory_pars_t*,physics, std::vector<rat_approx_t>*,appr, double,residue)
   {
     int nlevls=physics->stout_pars.nlevels;
     
@@ -106,7 +106,7 @@ namespace nissa
     else
       {
 	//allocate the stack of confs: conf is binded to sme_conf[0]
-	quad_su3 ***sme_conf;
+	eo_ptr<quad_su3> *sme_conf;
 	stout_smear_conf_stack_allocate(&sme_conf,conf,nlevls);
 	
 	//smear iteratively retaining all the stack
