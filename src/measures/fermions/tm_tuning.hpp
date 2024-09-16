@@ -26,7 +26,7 @@ namespace nissa
     virtual ~tm_tuning_meas_pars_t(){}
   };
   
-  void measure_tm_tuning(quad_su3 **conf,theory_pars_t &tp,tm_tuning_meas_pars_t &pars,int iconf,int conf_created);
+  void measure_tm_tuning(eo_ptr<quad_su3> conf,theory_pars_t &tp,tm_tuning_meas_pars_t &pars,int iconf,int conf_created);
 }
 
 #endif

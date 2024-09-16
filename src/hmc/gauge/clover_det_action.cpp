@@ -15,7 +15,7 @@
 namespace nissa
 {
   //Computes the clover determinant action
-  THREADABLE_FUNCTION_3ARG(clover_det_action, double*,act, std::vector<quark_content_t>,quark_content, quad_su3**,eo_conf)
+  THREADABLE_FUNCTION_3ARG(clover_det_action, double*,act, std::vector<quark_content_t>,quark_content, eo_ptr<quad_su3>,eo_conf)
   {
     double res=0.0;
     bool need=false;
@@ -29,7 +29,7 @@ namespace nissa
 	GET_THREAD_ID();
 	double *loc_act=nissa_malloc("loc_act",loc_volh,double);
 	
-	clover_term_t *Cl[2]={NULL,NULL};
+	eo_ptr<clover_term_t> Cl={NULL,NULL};
 	for(int eo=0;eo<2;eo++) Cl[eo]=nissa_malloc("Cl",loc_volh,clover_term_t);
 	chromo_operator(Cl,eo_conf);
 	
@@ -38,6 +38,9 @@ namespace nissa
 	    {
 	      chromo_operator_include_cSW(Cl,q.cSW);
 	      
+	      const double &mass=q.mass;
+	      const double &kappa=q.kappa;
+	      
 	      NISSA_PARALLEL_LOOP(ieo,0,loc_volh)
 		{
 		  complex d[2];
@@ -45,7 +48,7 @@ namespace nissa
 		    {
 		      halfspincolor_halfspincolor e;
 		      
-		      fill_point_twisted_clover_term(e,x_high_low,Cl[EVN][ieo],q.mass,q.kappa);
+		      fill_point_twisted_clover_term(e,x_high_low,Cl[EVN][ieo],mass,kappa);
 		      
 		      matrix_determinant(d[x_high_low],(complex*)e,NDIRAC*NCOL/2);
 		    }

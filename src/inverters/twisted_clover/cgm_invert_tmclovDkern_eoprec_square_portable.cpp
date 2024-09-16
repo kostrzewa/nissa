@@ -10,7 +10,7 @@
 
 namespace nissa
 {
-  void apply_tmclovDkern_cgm_kernel(spincolor *out,spincolor *temp1,spincolor *temp2,quad_su3 **conf,double kappa,clover_term_t *Cl_odd,inv_clover_term_t *invCl_evn,double mu,double diag_coeff,spincolor *in)
+  void apply_tmclovDkern_cgm_kernel(spincolor *out,spincolor *temp1,spincolor *temp2,eo_ptr<quad_su3> conf,double kappa,clover_term_t *Cl_odd,inv_clover_term_t *invCl_evn,double mu,double diag_coeff,spincolor *in)
   {
     tmclovDkern_eoprec_square_eos(out,temp1,temp2,conf,kappa,Cl_odd,invCl_evn,mu,in);
     
@@ -46,7 +46,7 @@ namespace nissa
 
 //additional parameters
 #define CGM_NARG 5
-#define AT1 quad_su3**
+#define AT1 eo_ptr<quad_su3>
 #define A1 conf
 #define AT2 double
 #define A2 kappa

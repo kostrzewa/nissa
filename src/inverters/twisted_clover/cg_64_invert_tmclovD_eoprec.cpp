@@ -45,7 +45,7 @@
 
 //additional parameters
 #define CG_NARG 5
-#define AT1 quad_su3**
+#define AT1 eo_ptr<quad_su3>
 #define A1 eo_conf
 #define AT2 double
 #define A2 kappa
@@ -61,7 +61,7 @@
 namespace nissa
 {
   //wrapper for bgq
-  void inv_tmclovDkern_eoprec_square_eos_cg_64(spincolor *sol,spincolor *guess,quad_su3 **eo_conf,double kappa,double cSW,clover_term_t *Cl_odd,inv_clover_term_t *invCl_evn,double mu,int niter,double residue,spincolor *source)
+  void inv_tmclovDkern_eoprec_square_eos_cg_64(spincolor *sol,spincolor *guess,eo_ptr<quad_su3> eo_conf,double kappa,double cSW,clover_term_t *Cl_odd,inv_clover_term_t *invCl_evn,double mu,int niter,double residue,spincolor *source)
   {
 #ifdef BGQ
     //allocate

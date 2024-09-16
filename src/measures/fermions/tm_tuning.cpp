@@ -36,7 +36,7 @@ namespace nissa
     memset(loc_corr,0,sizeof(complex)*ncorr_kind*glb_size[0]);
     
     //Source time
-    int tso;
+    int tso=0;
     
     // Command to invert
     auto inv=[&](spincolor *out,spincolor *in)
@@ -105,7 +105,7 @@ namespace nissa
       }
     
     glb_threads_reduce_double_vect((double*)loc_corr,2*ncorr_kind*glb_size[0]);
-    if(IS_MASTER_THREAD) glb_nodes_reduce_complex_vect(corr,loc_corr,ncorr_kind*glb_size[0]);
+    if(IS_MASTER_THREAD) MPI_reduce_complex_vect(corr,loc_corr,ncorr_kind*glb_size[0]);
     
     delete [] loc_corr;
     
@@ -118,7 +118,7 @@ namespace nissa
   THREADABLE_FUNCTION_END
   
   //compute and print
-  void measure_tm_tuning(quad_su3 **ext_conf,theory_pars_t &tp,tm_tuning_meas_pars_t &meas_pars,int iconf,int conf_created)
+  void measure_tm_tuning(eo_ptr<quad_su3> ext_conf,theory_pars_t &tp,tm_tuning_meas_pars_t &meas_pars,int iconf,int conf_created)
   {
     FILE *file=open_file(meas_pars.path,conf_created?"w":"a");
     

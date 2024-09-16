@@ -5,7 +5,7 @@
 
 namespace nissa
 {
-  void clover_det_action(double *act,std::vector<quark_content_t> quark_content,quad_su3 **eo_conf);
+  void clover_det_action(double *act,std::vector<quark_content_t> quark_content,eo_ptr<quad_su3> eo_conf);
 }
 
 #endif

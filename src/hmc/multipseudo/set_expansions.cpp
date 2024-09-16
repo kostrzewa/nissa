@@ -4,7 +4,10 @@
 
 #include <math.h>
 
+#include <memory>
+
 #include "base/random.hpp"
+#include "base/cuda_test.hpp"
 #include "communicate/communicate.hpp"
 #include "dirac_operators/stD/dirac_operator_stD.hpp"
 #include "dirac_operators/tmclovD_eoprec/dirac_operator_tmclovD_eoprec.hpp"
@@ -24,7 +27,7 @@ namespace nissa
   const double enl_gen=pow(2,0.25);
   
   //Return the maximal eigenvalue of the Dirac operator for the passed quark
-  THREADABLE_FUNCTION_6ARG(max_eigenval, double*,eig_max, quark_content_t*,quark, quad_su3**,eo_conf, clover_term_t**,Cl, quad_u1**,backfield, int,niters)
+  THREADABLE_FUNCTION_6ARG(max_eigenval, double*,eig_max, quark_content_t*,quark, eo_ptr<quad_su3>,eo_conf, eo_ptr<clover_term_t>,Cl, eo_ptr<quad_u1>,backfield, int,niters)
   {
     pseudofermion_t in(quark->discretiz);
     pseudofermion_t temp1(quark->discretiz);
@@ -56,6 +59,17 @@ namespace nissa
     int iter=0;
     int is_increasing=1;
     double old_eig_max;
+    
+#if THREADS_TYPE == CUDA_THREADS
+    const char DOE_TEST[]="DOE_TEST";
+    if(getenv(DOE_TEST)!=NULL)
+      {
+	gpu::cuda_test<double>(out.stag,eo_conf,in.stag);
+	gpu::cuda_test<float>(out.stag,eo_conf,in.stag);
+      }
+    else
+      master_printf("to run the test export %s\n",DOE_TEST);
+#endif
     
     do
       {
@@ -159,7 +173,7 @@ namespace nissa
   }
   
   //scale the rational expansion
-  THREADABLE_FUNCTION_4ARG(set_expansions, std::vector<rat_approx_t>*,rat_appr, quad_su3**,eo_conf, theory_pars_t*,theory_pars, hmc_evol_pars_t*,evol_pars)
+  THREADABLE_FUNCTION_4ARG(set_expansions, std::vector<rat_approx_t>*,rat_appr, eo_ptr<quad_su3>,eo_conf, theory_pars_t*,theory_pars, hmc_evol_pars_t*,evol_pars)
   {
     GET_THREAD_ID();
     
@@ -174,7 +188,7 @@ namespace nissa
     double maxerr_to_recreate[nappr_per_quark*nflavs];
     
     //allocate or not clover term and inverse evn clover term
-    clover_term_t *Cl[2]={NULL,NULL};
+    eo_ptr<clover_term_t> Cl{NULL,NULL};
     if(theory_pars->clover_to_be_computed())
       {
 	for(int eo=0;eo<2;eo++) Cl[eo]=nissa_malloc("Cl",loc_volh,clover_term_t);
